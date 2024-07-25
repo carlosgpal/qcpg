@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: qcpg
+
+  # cassandra:
+  #   contact-points: cassandra
+  #   port: 9042
+  #   keyspace-name: qcpg
+  #   schema-action: create-if-not-exists
+
+  neo4j:
+    uri: bolt://localhost:7687
+    authentication:
+      username: neo4j
+      password: default1
+
+  datasource:
+    driver-class-name: org.neo4j.jdbc.Driver
+
+logging:
+  level:
+    org:
+      springframework:
+        data:
+          neo4j: DEBUG
+
+custom:
+  uploads: ./src/main/resources/uploads/
