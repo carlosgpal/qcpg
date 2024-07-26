@@ -3,6 +3,9 @@ package com.qcpg.qcpg.enumerations;
 public enum RelationshipTags {
     AST,
     CFG,
-    PDG,
+    CFG_TRUE,
+    CFG_FALSE,
+    PDG_CONTROL,
+    PDG_DATA,
     RELEVANT_FOR_GATES,
 }

@@ -1,7 +1,8 @@
 package com.qcpg.qcpg.analysis;
 
+import com.qcpg.qcpg.entities.GenericNode;
 import com.qcpg.qcpg.entities.QuantumProgram;
-
+import com.qcpg.qcpg.enumerations.NodeTags;
 import com.qcpg.qcpg.antlr4.qasm3Lexer;
 import com.qcpg.qcpg.antlr4.qasm3Parser;
 
@@ -26,7 +27,16 @@ public class QASMParser {
             throw new IllegalArgumentException("Syntax errors found in OpenQASM file.");
         }
 
-        return new QuantumProgram();
+        QuantumProgram quantumProgram = initiazeQuantumProgram();
+
+        List<String> lines = readLinesFromFile(filePath);
+
+        quantumProgram = parseQubits(quantumProgram, lines);
+        // quantumProgram = parseClassicBits(quantumProgram, lines);
+        // quantumProgram = parseGates(quantumProgram, lines);
+        // quantumProgram = parseMeasures(quantumProgram, lines);
+
+        return quantumProgram;
     }
 
     private List<String> readLinesFromFile(String filePath) {
@@ -40,6 +50,81 @@ public class QASMParser {
             e.printStackTrace();
         }
         return lines;
+    }
+
+    private QuantumProgram parseQubits(QuantumProgram quantumProgram, List<String> lines) {
+        List<GenericNode> qubits = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+
+            if (line.startsWith("qreg")) {
+                throw new IllegalArgumentException(
+                        "Syntax errors found in OpenQASM , qreg will not be supported for OPENQASM 3.0 in the future.");
+            }
+
+            if (line.startsWith("qubit")) {
+                String[] tokens = line.split(" ");
+                String qDeclaration = tokens[0];
+                String qSet = tokens[1].replace(";", "");
+                if (qDeclaration.contains("[")) {
+                    int startIndex = qDeclaration.indexOf("[") + 1;
+                    int endIndex = qDeclaration.indexOf("]");
+                    int numQubits = Integer.parseInt(qDeclaration.substring(startIndex, endIndex));
+                    for (int j = 0; j < numQubits; j++) {
+                        GenericNode qubit = new GenericNode();
+                        qubit.setType("Qubit" + j);
+                        qubit.setFullName(qSet + "[" + j + "]");
+                        qubit.setSet(qSet);
+                        qubit.setSourceFile("sourceFile");
+                        qubit.setLineOfCode(i);
+                        qubit.setCodeLine(line);
+                        qubit.setImplicit(false);
+                        qubit.setInferred(false);
+                        qubit.setStaticAccess(false);
+                        labels.clear();
+                        labels.add(NodeTags.Declaration.toString());
+                        labels.add(NodeTags.QuantumBit.toString());
+                        qubit.setLabels(labels);
+                        qubits.add(qubit);
+                    }
+                } else {
+                    GenericNode qubit = new GenericNode();
+                    qubit.setType("Qubit 0");
+                    qubit.setFullName(qSet + "[0]");
+                    qubit.setSet(qSet);
+                    qubit.setSourceFile("sourceFile");
+                    qubit.setLineOfCode(i);
+                    qubit.setCodeLine(line);
+                    qubit.setImplicit(false);
+                    qubit.setInferred(false);
+                    qubit.setStaticAccess(false);
+                    labels.clear();
+                    labels.add(NodeTags.Declaration.toString());
+                    labels.add(NodeTags.QuantumBit.toString());
+                    qubit.setLabels(labels);
+                    qubits.add(qubit);
+                }
+            }
+        }
+        quantumProgram.setQubits(qubits);
+        return quantumProgram;
+
+    }
+
+    private QuantumProgram parseClassicBits(QuantumProgram quantumProgram, List<String> lines) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'parseClassicBits'");
+    }
+
+    private QuantumProgram parseGates(QuantumProgram quantumProgram, List<String> lines) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'parseGates'");
+    }
+
+    private QuantumProgram parseMeasures(QuantumProgram quantumProgram, List<String> lines) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'parseMeasures'");
     }
 
     public boolean isValidQASMCode(String filePath) throws IOException {
@@ -56,5 +141,14 @@ public class QASMParser {
             return false;
         }
         return true;
+    }
+
+    private QuantumProgram initiazeQuantumProgram() {
+        QuantumProgram quantumProgram = new QuantumProgram();
+        quantumProgram.setQubits(new ArrayList<>());
+        quantumProgram.setClassicBits(new ArrayList<>());
+        quantumProgram.setGates(new ArrayList<>());
+        quantumProgram.setMeasures(new ArrayList<>());
+        return quantumProgram;
     }
 }

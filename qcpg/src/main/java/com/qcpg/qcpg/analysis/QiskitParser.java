@@ -18,9 +18,11 @@ public class QiskitParser {
         if (!isValidQiskitCode(filePath)) {
             throw new IllegalArgumentException("Syntax errors found in Python file.");
         }
+        QuantumProgram quantumProgram = initiazeQuantumProgram();
 
-        QuantumProgram program = new QuantumProgram();
-        return program;
+        List<String> lines = readLinesFromFile(filePath);
+
+        return quantumProgram;
     }
 
     private List<String> readLinesFromFile(String filePath) {
@@ -77,5 +79,14 @@ public class QiskitParser {
 
     private boolean containsQiskitImports(String code) {
         return code.lines().anyMatch(line -> line.contains("import qiskit") || line.contains("from qiskit"));
+    }
+
+    private QuantumProgram initiazeQuantumProgram() {
+        QuantumProgram quantumProgram = new QuantumProgram();
+        quantumProgram.setQubits(new ArrayList<>());
+        quantumProgram.setClassicBits(new ArrayList<>());
+        quantumProgram.setGates(new ArrayList<>());
+        quantumProgram.setMeasures(new ArrayList<>());
+        return quantumProgram;
     }
 }

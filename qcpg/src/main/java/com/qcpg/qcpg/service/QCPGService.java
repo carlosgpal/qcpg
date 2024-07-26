@@ -81,7 +81,7 @@ public class QCPGService {
             throw new IllegalArgumentException("Unsupported code type: " + codeType);
         }
 
-        QCPG qcpg = qcpgTransformer.transform(quantumProgram);
+        QCPG qcpg = qcpgTransformer.transform(quantumProgram, filePath.getFileName().toString());
         genericNodeRepository.saveAll(qcpg.getNodes());
 
         return qcpg;

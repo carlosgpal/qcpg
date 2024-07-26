@@ -2,29 +2,19 @@ package com.qcpg.qcpg.transformation;
 
 import com.qcpg.qcpg.entities.QuantumProgram;
 import com.qcpg.qcpg.entities.QCPG;
-import com.qcpg.qcpg.entities.GenericNode;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
-import java.util.List;
 
 @Component
 public class QCPGTransformer {
 
-    public QCPG transform(QuantumProgram quantumProgram) {
+    public QCPG transform(QuantumProgram quantumProgram, String filename) {
         QCPG qcpg = new QCPG();
-        qcpg.setId(quantumProgram.getId());
-        qcpg.setFilename("TODO");
+        qcpg.setFilename(filename);
 
-        List<GenericNode> nodes = new ArrayList<>();
-
-        GenericNode node = new GenericNode();
-        node.setName("QuantumGate");
-        node.setValue("H");
-
-        nodes.add(node);
-
-        qcpg.setNodes(nodes);
+        qcpg.setNodes(new ArrayList<>());
+        qcpg.getNodes().addAll(quantumProgram.getQubits());
 
         return qcpg;
     }
