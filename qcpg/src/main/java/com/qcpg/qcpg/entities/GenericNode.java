@@ -1,8 +1,10 @@
 package com.qcpg.qcpg.entities;
 
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.data.neo4j.core.schema.DynamicLabels;
@@ -13,6 +15,7 @@ import org.springframework.data.neo4j.core.schema.Relationship;
 
 @Data
 @NoArgsConstructor
+@AllArgsConstructor
 @Node("GenericNode")
 public class GenericNode {
 
@@ -33,6 +36,9 @@ public class GenericNode {
     @DynamicLabels
     private List<String> labels;
 
-    @Relationship
-    private List<GenericRelationship> relationships;
+    @Relationship(direction = Relationship.Direction.OUTGOING, type = "RELATIONSHIP")
+    private List<GenericRelationship> relationshipsOut = new ArrayList<>();
+
+    @Relationship(direction = Relationship.Direction.INCOMING, type = "RELATIONSHIP")
+    private List<GenericRelationship> relationshipsIn = new ArrayList<>();
 }

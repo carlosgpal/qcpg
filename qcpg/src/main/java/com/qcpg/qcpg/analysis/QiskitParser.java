@@ -22,6 +22,8 @@ public class QiskitParser {
 
         List<String> lines = readLinesFromFile(filePath);
 
+        System.out.println(lines);
+
         return quantumProgram;
     }
 

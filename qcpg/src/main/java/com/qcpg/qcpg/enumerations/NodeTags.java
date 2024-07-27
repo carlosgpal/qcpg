@@ -8,4 +8,5 @@ public enum NodeTags {
     ClassicBit,
     QuantumGateH,
     QuantumGateX,
+    Measure,
 }
