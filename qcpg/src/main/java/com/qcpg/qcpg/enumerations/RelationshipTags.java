@@ -8,5 +8,7 @@ public enum RelationshipTags {
     PDG_CONTROL,
     PDG_DATA,
     RELEVANT_FOR_GATES,
+    QU_0,
+    QU_1,
     RELEVANT_FOR_MEASURES,
 }

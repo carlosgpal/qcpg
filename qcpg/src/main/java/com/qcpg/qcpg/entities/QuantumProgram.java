@@ -16,4 +16,5 @@ public class QuantumProgram {
     List<GenericNode> classicBits;
     List<GenericNode> gates;
     List<GenericNode> measures;
+    List<GenericNode> ASTNodes;
 }

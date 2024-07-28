@@ -24,7 +24,6 @@ public class GenericNode {
     private Long id;
     private String type;
     private String fullName;
-    private String value;
     private String set;
     private String sourceFile;
     private int lineOfCode;

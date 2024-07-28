@@ -17,6 +17,8 @@ public class QCPGTransformer {
         qcpg.getNodes().addAll(quantumProgram.getQubits());
         qcpg.getNodes().addAll(quantumProgram.getClassicBits());
         qcpg.getNodes().addAll(quantumProgram.getMeasures());
+        qcpg.getNodes().addAll(quantumProgram.getGates());
+        qcpg.getNodes().addAll(quantumProgram.getASTNodes());
 
         return qcpg;
     }

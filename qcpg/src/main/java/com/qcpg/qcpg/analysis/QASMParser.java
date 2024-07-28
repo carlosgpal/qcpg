@@ -8,14 +8,15 @@ import com.qcpg.qcpg.enumerations.RelationshipTags;
 import com.qcpg.qcpg.antlr4.qasm3Lexer;
 import com.qcpg.qcpg.antlr4.qasm3Parser;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Stack;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -34,14 +35,30 @@ public class QASMParser {
             throw new IllegalArgumentException("Syntax errors found in OpenQASM file " + filePath);
         }
 
-        QuantumProgram quantumProgram = initiazeQuantumProgram();
-
-        boolean inBlockComment = false;
+        QuantumProgram quantumProgram = initializeQuantumProgram();
+        Map<String, GenericNode> nodeMap = new HashMap<>();
 
         List<String> lines = readLinesFromFile(filePath);
+        boolean inBlockComment = false;
+
+        GenericNode rootASTNode = createASTRootNode(filePath);
+        quantumProgram.getASTNodes().add(rootASTNode);
+
+        Stack<GenericNode> nodeStack = new Stack<>();
+        nodeStack.push(rootASTNode);
 
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i).trim();
+
+            if (line.isEmpty()) {
+                continue;
+            }
+
+            if (line.contains("*/")) {
+                inBlockComment = false;
+                continue;
+            }
+
             if (inBlockComment) {
                 if (line.contains("*/")) {
                     inBlockComment = false;
@@ -62,29 +79,169 @@ public class QASMParser {
             }
 
             if (line.startsWith("qubit") || line.startsWith("qreg")) {
-                quantumProgram.getQubits().addAll(parseQubits(line, i + 1));
+                List<GenericNode> qubits = parseQubits(line, i + 1);
+                quantumProgram.getQubits().addAll(qubits);
+                qubits.forEach(qubit -> nodeMap.put(qubit.getFullName(), qubit));
             } else if (line.startsWith("bit") || line.startsWith("creg")) {
-                quantumProgram.getClassicBits().addAll(parseClassicBits(line, i + 1));
+                List<GenericNode> classicBits = parseClassicBits(line, i + 1);
+                quantumProgram.getClassicBits().addAll(classicBits);
+                classicBits.forEach(bit -> nodeMap.put(bit.getFullName(), bit));
             } else if (line.startsWith("measure")) {
-                quantumProgram.getMeasures().addAll(
-                        parseMeasures(line, i + 1, quantumProgram.getQubits(), quantumProgram.getClassicBits()));
+                List<GenericNode> measures = parseMeasures(line, i + 1, quantumProgram.getQubits(),
+                        quantumProgram.getClassicBits());
+                quantumProgram.getMeasures().addAll(measures);
+                measures.forEach(measure -> nodeMap.put(measure.getFullName(), measure));
+            } else if (isGateLine(line)) {
+                List<GenericNode> gates = parseGates(line, i + 1, nodeMap);
+                quantumProgram.getGates().addAll(gates);
+                gates.forEach(gate -> nodeMap.put(gate.getFullName(), gate));
+            }
+
+            if (!line.startsWith("OPENQASM") && !line.startsWith("include")) {
+                if (line.endsWith("{")) {
+                    String[] tokens = line.split("\\s+|\\(");
+                    GenericNode blockNode = createASTNode(line, i + 1, "Block " + tokens[0]);
+                    blockNode.getLabels().add("Statement");
+                    nodeStack.peek().getRelationshipsOut()
+                            .add(new GenericRelationship(RelationshipTags.AST.toString(), blockNode));
+                    nodeStack.push(blockNode);
+                } else if (line.equals("}")) {
+                    nodeStack.pop();
+                } else {
+                    List<GenericNode> astNodes = parseASTNodes(line, i + 1, nodeStack.peek());
+                    quantumProgram.getASTNodes().addAll(astNodes);
+                    astNodes.forEach(astNode -> nodeMap.put(astNode.getFullName(), astNode));
+                }
             }
         }
 
         return quantumProgram;
     }
 
-    private List<String> readLinesFromFile(String filePath) {
-        List<String> lines = new ArrayList<>();
-        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                lines.add(line);
+    private GenericNode createASTRootNode(String filePath) {
+        GenericNode root = new GenericNode();
+        root.setType("ASTRoot");
+        root.setFullName("AST Root");
+        root.setSourceFile(filePath);
+        root.setLineOfCode(0);
+        root.setCodeLine("");
+        root.setImplicit(false);
+        root.setInferred(false);
+        root.setStaticAccess(false);
+        List<String> labels = new ArrayList<>();
+        labels.add(NodeTags.Declaration.toString());
+        root.setLabels(labels);
+        return root;
+    }
+
+    private List<GenericNode> parseASTNodes(String line, int lineNumber, GenericNode parentNode) {
+        List<GenericNode> astNodes = new ArrayList<>();
+        String[] tokens = line.split("\\s+|,|->");
+
+        if (tokens.length > 0) {
+            String rootNodeType = tokens[0].replace(";", "");
+            GenericNode rootNode = createASTNode(line, lineNumber, rootNodeType);
+            rootNode.getLabels().add("Statement");
+            parentNode.getRelationshipsOut().add(new GenericRelationship(RelationshipTags.AST.toString(), rootNode));
+            astNodes.add(rootNode);
+
+            if (isControlStructure(rootNodeType)) {
+                int conditionEndIndex = findConditionEndIndex(line);
+                String condition = line.substring(line.indexOf(tokens[1]), conditionEndIndex).trim();
+                String statements = line.substring(conditionEndIndex).trim().replace("{", "").replace("}", "");
+
+                GenericNode conditionNode = createASTNode(condition, lineNumber, "Condition");
+                conditionNode.getLabels().add("Condition");
+                rootNode.getRelationshipsOut()
+                        .add(new GenericRelationship(RelationshipTags.AST.toString(), conditionNode));
+                astNodes.add(conditionNode);
+
+                String[] conditionTokens = condition.split("\\s+|,|->");
+                for (String token : conditionTokens) {
+                    if (!token.isEmpty()) {
+                        GenericNode conditionTokenNode = createASTNode(condition, lineNumber, token);
+                        astNodes.add(conditionTokenNode);
+                        conditionNode.getRelationshipsOut()
+                                .add(new GenericRelationship(RelationshipTags.AST.toString(), conditionTokenNode));
+                    }
+                }
+
+                if (!statements.isEmpty()) {
+                    GenericNode statementNode = createASTNode(statements, lineNumber, "Statement");
+                    statementNode.getLabels().add("Statement");
+                    rootNode.getRelationshipsOut()
+                            .add(new GenericRelationship(RelationshipTags.AST.toString(), statementNode));
+                    astNodes.add(statementNode);
+
+                    String[] statementTokens = statements.split("\\s+|,|->");
+                    for (String token : statementTokens) {
+                        if (!token.isEmpty()) {
+                            GenericNode statementTokenNode = createASTNode(statements, lineNumber, token);
+                            astNodes.add(statementTokenNode);
+                            statementNode.getRelationshipsOut()
+                                    .add(new GenericRelationship(RelationshipTags.AST.toString(), statementTokenNode));
+                        }
+                    }
+                }
+            } else {
+                for (int i = 1; i < tokens.length; i++) {
+                    String token = tokens[i].replace(";", "");
+                    if (!token.isEmpty()) {
+                        GenericNode astNode = createASTNode(line, lineNumber, token);
+                        astNodes.add(astNode);
+                        rootNode.getRelationshipsOut()
+                                .add(new GenericRelationship(RelationshipTags.AST.toString(), astNode));
+                    }
+                }
             }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
-        return lines;
+
+        return astNodes;
+    }
+
+    private int findConditionEndIndex(String line) {
+        int index = 0;
+        int openBrackets = 0;
+        for (char c : line.toCharArray()) {
+            if (c == '(') {
+                openBrackets++;
+            } else if (c == ')') {
+                openBrackets--;
+                if (openBrackets == 0) {
+                    return index + 1;
+                }
+            }
+            index++;
+        }
+        return line.length();
+    }
+
+    private boolean isControlStructure(String token) {
+        return token.equals("for") || token.equals("while") || token.equals("if") || token.equals("gate");
+    }
+
+    private GenericNode createASTNode(String line, int lineNumber, String content) {
+        GenericNode astNode = new GenericNode();
+        astNode.setType(content);
+        astNode.setFullName(content + " at line " + lineNumber);
+        astNode.setSourceFile(filePath);
+        astNode.setLineOfCode(lineNumber);
+        astNode.setCodeLine(line);
+        astNode.setImplicit(false);
+        astNode.setInferred(false);
+        astNode.setStaticAccess(false);
+        List<String> labels = new ArrayList<>();
+        labels.add(NodeTags.Declaration.toString());
+        astNode.setLabels(labels);
+        return astNode;
+    }
+
+    private List<String> readLinesFromFile(String filePath) {
+        try {
+            return Files.readAllLines(Paths.get(filePath));
+        } catch (IOException e) {
+            throw new RuntimeException("Error reading file " + filePath, e);
+        }
     }
 
     private List<GenericNode> parseQubits(String line, int lineNumber) {
@@ -264,6 +421,88 @@ public class QASMParser {
         return null;
     }
 
+    private List<GenericNode> parseGates(String line, int lineNumber, Map<String, GenericNode> nodeMap) {
+        List<GenericNode> gates = new ArrayList<>();
+        Pattern patternGate = Pattern.compile("(\\w+)\\s+([^;]+);");
+
+        Matcher matcherGate = patternGate.matcher(line);
+
+        if (matcherGate.find()) {
+            String gateType = matcherGate.group(1);
+            String operandsStr = matcherGate.group(2);
+            String[] operands = operandsStr.split(",");
+
+            List<GenericNode> operandNodes = new ArrayList<>();
+            for (String operand : operands) {
+                operand = operand.trim();
+                GenericNode node = nodeMap.get("Qubit " + operand);
+                if (node == null) {
+                    node = nodeMap.get("Bit " + operand);
+                }
+                if (node != null) {
+                    operandNodes.add(node);
+                }
+            }
+
+            gates.add(createGateNode(line, lineNumber, gateType, operandNodes));
+        }
+        return gates;
+    }
+
+    private GenericNode createGateNode(String line, int lineNumber, String gateType, List<GenericNode> operandNodes) {
+        GenericNode gate = new GenericNode();
+        gate.setType(gateType);
+        StringBuilder fullNameBuilder = new StringBuilder(gateType + " Gate");
+        if (!operandNodes.isEmpty()) {
+            fullNameBuilder.append(" (");
+            for (int i = 0; i < operandNodes.size(); i++) {
+                if (i > 0) {
+                    fullNameBuilder.append(", ");
+                }
+                fullNameBuilder.append(operandNodes.get(i).getFullName());
+            }
+            fullNameBuilder.append(")");
+        }
+        gate.setFullName(fullNameBuilder.toString());
+        gate.setSet(gateType);
+        gate.setSourceFile(filePath);
+        gate.setLineOfCode(lineNumber);
+        gate.setCodeLine(line);
+        gate.setImplicit(false);
+        gate.setInferred(false);
+        gate.setStaticAccess(false);
+        List<String> labels = new ArrayList<>();
+        labels.add(NodeTags.Declaration.toString());
+        labels.add(NodeTags.QuantumGate.toString());
+        gate.setLabels(labels);
+
+        if (gateType.equals("cx") && operandNodes.size() == 2) {
+            gate.getRelationshipsOut()
+                    .add(new GenericRelationship(RelationshipTags.QU_0.toString(), operandNodes.get(0)));
+            gate.getRelationshipsOut()
+                    .add(new GenericRelationship(RelationshipTags.QU_1.toString(), operandNodes.get(1)));
+        } else {
+            for (GenericNode operand : operandNodes) {
+                if (operand != null) {
+                    gate.getRelationshipsIn()
+                            .add(new GenericRelationship(RelationshipTags.RELEVANT_FOR_GATES.toString(), operand));
+                }
+            }
+        }
+
+        return gate;
+    }
+
+    private boolean isGateLine(String line) {
+        String[] knownGates = { "cx", "h", "x", "y", "z", "t", "tdg", "s", "sdg" };
+        for (String gate : knownGates) {
+            if (line.startsWith(gate + " ")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public boolean isValidQASMCode(String filePath) throws IOException {
         Path file = Paths.get(filePath);
         this.filePath = file.getFileName().toString();
@@ -279,12 +518,13 @@ public class QASMParser {
         return parser.getNumberOfSyntaxErrors() == 0;
     }
 
-    private QuantumProgram initiazeQuantumProgram() {
+    private QuantumProgram initializeQuantumProgram() {
         QuantumProgram quantumProgram = new QuantumProgram();
         quantumProgram.setQubits(new ArrayList<>());
         quantumProgram.setClassicBits(new ArrayList<>());
         quantumProgram.setGates(new ArrayList<>());
         quantumProgram.setMeasures(new ArrayList<>());
+        quantumProgram.setASTNodes(new ArrayList<>());
         return quantumProgram;
     }
 }
