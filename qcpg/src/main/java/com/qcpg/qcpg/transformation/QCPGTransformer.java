@@ -9,9 +9,12 @@ import java.util.ArrayList;
 @Component
 public class QCPGTransformer {
 
-    public QCPG transform(QuantumProgram quantumProgram, String filename) {
+    public QCPG transform(QuantumProgram quantumProgram, String fileName, String fileContent) {
         QCPG qcpg = new QCPG();
-        qcpg.setFilename(filename);
+
+        qcpg.setFilename(fileName);
+
+        qcpg.setContent(fileContent);
 
         qcpg.setNodes(new ArrayList<>());
         qcpg.getNodes().addAll(quantumProgram.getQubits());

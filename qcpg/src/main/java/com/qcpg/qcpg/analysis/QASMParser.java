@@ -101,7 +101,7 @@ public class QASMParser {
                 if (line.endsWith("{")) {
                     String[] tokens = line.split("\\s+|\\(");
                     GenericNode blockNode = createASTNode(line, i + 1, "Block " + tokens[0]);
-                    blockNode.getLabels().add("Statement");
+                    blockNode.getLabels().add(NodeTags.Statement.toString());
                     nodeStack.peek().getRelationshipsOut()
                             .add(new GenericRelationship(RelationshipTags.AST.toString(), blockNode));
                     nodeStack.push(blockNode);
@@ -114,6 +114,8 @@ public class QASMParser {
                 }
             }
         }
+
+        relateQuantumPartsWithParents(quantumProgram);
 
         return quantumProgram;
     }
@@ -141,7 +143,7 @@ public class QASMParser {
         if (tokens.length > 0) {
             String rootNodeType = tokens[0].replace(";", "");
             GenericNode rootNode = createASTNode(line, lineNumber, rootNodeType);
-            rootNode.getLabels().add("Statement");
+            rootNode.getLabels().add(NodeTags.Parent.toString());
             parentNode.getRelationshipsOut().add(new GenericRelationship(RelationshipTags.AST.toString(), rootNode));
             astNodes.add(rootNode);
 
@@ -150,7 +152,7 @@ public class QASMParser {
                 String condition = line.substring(line.indexOf(tokens[1]), conditionEndIndex).trim();
                 String statements = line.substring(conditionEndIndex).trim().replace("{", "").replace("}", "");
 
-                GenericNode conditionNode = createASTNode(condition, lineNumber, "Condition");
+                GenericNode conditionNode = createASTNode(condition, lineNumber, NodeTags.Condition.toString());
                 conditionNode.getLabels().add("Condition");
                 rootNode.getRelationshipsOut()
                         .add(new GenericRelationship(RelationshipTags.AST.toString(), conditionNode));
@@ -501,6 +503,45 @@ public class QASMParser {
             }
         }
         return false;
+    }
+
+    private void relateQuantumPartsWithParents(QuantumProgram quantumProgram) {
+        List<GenericNode> parents = new ArrayList<>();
+        for (GenericNode node : quantumProgram.getASTNodes()) {
+            if (node.getLabels().contains(NodeTags.Parent.toString())) {
+                parents.add(node);
+            }
+        }
+
+        for (GenericNode parent : parents) {
+            for (GenericNode gate : quantumProgram.getGates()) {
+                if (parent.getLineOfCode() == gate.getLineOfCode() && parent.getType().equals(gate.getType())) {
+                    parent.getRelationshipsOut()
+                            .add(new GenericRelationship(RelationshipTags.RELEVANT_FOR_GATES.toString(), gate));
+                }
+            }
+
+            for (GenericNode qubit : quantumProgram.getQubits()) {
+                if (parent.getLineOfCode() == qubit.getLineOfCode()) {
+                    parent.getRelationshipsOut()
+                            .add(new GenericRelationship(RelationshipTags.RELEVANT_FOR_QUBITS.toString(), qubit));
+                }
+            }
+
+            for (GenericNode classicBit : quantumProgram.getClassicBits()) {
+                if (parent.getLineOfCode() == classicBit.getLineOfCode()) {
+                    parent.getRelationshipsOut().add(
+                            new GenericRelationship(RelationshipTags.RELEVANT_FOR_CLASSICBITS.toString(), classicBit));
+                }
+            }
+
+            for (GenericNode measure : quantumProgram.getMeasures()) {
+                if (parent.getLineOfCode() == measure.getLineOfCode()) {
+                    parent.getRelationshipsOut()
+                            .add(new GenericRelationship(RelationshipTags.RELEVANT_FOR_MEASURES.toString(), measure));
+                }
+            }
+        }
     }
 
     public boolean isValidQASMCode(String filePath) throws IOException {

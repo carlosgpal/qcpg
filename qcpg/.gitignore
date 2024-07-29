@@ -32,5 +32,9 @@ build/
 ### VS Code ###
 .vscode/
 
+### Volumes ###
+/src/main/resources/qcpg
+/src/main/resources/volumes
+
 ### Uploads ###
 /src/main/resources/uploads

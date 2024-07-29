@@ -11,4 +11,6 @@ public enum RelationshipTags {
     QU_0,
     QU_1,
     RELEVANT_FOR_MEASURES,
+    RELEVANT_FOR_CLASSICBITS,
+    RELEVANT_FOR_QUBITS,
 }
