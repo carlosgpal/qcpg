@@ -13,7 +13,8 @@ public class QuantumProgram {
     private Long id;
     private String code;
     List<GenericNode> qubits;
-    List<GenericNode> classicalBits;
+    List<GenericNode> classicBits;
     List<GenericNode> gates;
-    List<GenericNode> measurements;
+    List<GenericNode> measures;
+    List<GenericNode> ASTNodes;
 }

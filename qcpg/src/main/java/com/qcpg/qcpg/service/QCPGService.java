@@ -3,6 +3,7 @@ package com.qcpg.qcpg.service;
 import com.qcpg.qcpg.entities.QCPG;
 import com.qcpg.qcpg.entities.QuantumProgram;
 import com.qcpg.qcpg.repository.GenericNodeRepository;
+import com.qcpg.qcpg.repository.QCPGRepository;
 // import com.qcpg.qcpg.repository.QCPGRepository;
 import com.qcpg.qcpg.transformation.QCPGTransformer;
 import com.qcpg.qcpg.analysis.QASMParser;
@@ -31,8 +32,8 @@ public class QCPGService {
     @Autowired
     private QCPGTransformer qcpgTransformer;
 
-    // @Autowired
-    // private QCPGRepository qcpgRepository;
+    @Autowired
+    private QCPGRepository qcpgRepository;
 
     @Autowired
     private GenericNodeRepository genericNodeRepository;
@@ -81,8 +82,12 @@ public class QCPGService {
             throw new IllegalArgumentException("Unsupported code type: " + codeType);
         }
 
-        QCPG qcpg = qcpgTransformer.transform(quantumProgram);
+        QCPG qcpg = qcpgTransformer.transform(quantumProgram, filePath.getFileName().toString(),
+                Files.readString(filePath));
+
+        genericNodeRepository.deleteAll();
         genericNodeRepository.saveAll(qcpg.getNodes());
+        // qcpgRepository.save(qcpg);
 
         return qcpg;
     }
@@ -117,8 +122,6 @@ public class QCPGService {
     }
 
     public QCPG getQCPGById(Long id) {
-        // Descomentar cuando se implemente cassandra
-        // return qcpgRepository.findById(id).orElse(null);
-        return null;
+        return qcpgRepository.findById(id).orElse(null);
     }
 }
