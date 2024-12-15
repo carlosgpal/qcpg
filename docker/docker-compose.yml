@@ -1,23 +1,6 @@
 version: "3.8"
 
 services:
-  cassandra:
-    image: cassandra:latest
-    container_name: cassandra
-    ports:
-      - "9041:9042"
-    environment:
-      - CASSANDRA_USER=cassandra
-      - CASSANDRA_PASSWORD=default1
-    volumes:
-      - ../qcpg/src/main/resources/volumes/cassandra:/var/lib/cassandra
-      - ./init-cassandra.cql:/docker-entrypoint-initdb.d/init-cassandra.cql
-    entrypoint:
-      [
-        "sh",
-        "-c",
-        "exec /usr/local/bin/docker-entrypoint.sh cassandra -f && cqlsh < /docker-entrypoint-initdb.d/init-cassandra.cql",
-      ]
 
   neo4j:
     image: neo4j:latest
@@ -26,7 +9,10 @@ services:
       - "7474:7474"
       - "7687:7687"
     environment:
-      NEO4J_AUTH: neo4j/default1
+      - NEO4J_AUTH=neo4j/default1
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_dbms_security_procedures_allowlist=apoc.*
+      - NEO4JLABS_PLUGINS=["apoc"]
     volumes:
       - ../qcpg/src/main/resources/volumes/neo4j/data:/data
       - ../qcpg/src/main/resources/volumes/neo4j/logs:/logs

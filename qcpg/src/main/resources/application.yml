@@ -8,18 +8,6 @@ spring:
       username: neo4j
       password: default1
 
-  cassandra:
-    contact-points: localhost
-    port: 9041
-    keyspace-name: qcpg
-    username: cassandra
-    password: default1
-    schema-action: create-if-not-exists
-    local-datacenter: datacenter1
-
-  datasource:
-    driver-class-name: org.neo4j.jdbc.Driver
-
 logging:
   level:
     org:
@@ -27,5 +15,3 @@ logging:
         data:
           neo4j: DEBUG
 
-custom:
-  uploads: ./src/main/resources/uploads/
