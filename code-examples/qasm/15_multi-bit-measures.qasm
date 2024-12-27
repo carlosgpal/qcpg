@@ -1,4 +1,4 @@
 OPENQASM 3.0;
-qubit q[2];
-bit c[2];
+qubit[2] q;
+bit[2] c;
 measure q -> c;

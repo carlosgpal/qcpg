@@ -1,2 +1,2 @@
 OPENQASM 3.0;
-float[32] angle = tan(pi() / 4);
+const float[32] angle = tan(pi() / 4);

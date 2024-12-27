@@ -1,140 +1,173 @@
 package com.qcpg.qcpg.service.qasm;
 
-import com.qcpg.qcpg.graph.AstGraph;
-import com.qcpg.qcpg.graph.CfgGraph;
-import com.qcpg.qcpg.graph.PdgGraph;
+import com.qcpg.qcpg.model.graphCreation.*;
+import com.qcpg.qcpg.repository.graphCreation.GraphCreationRepository;
 import com.qcpg.qcpg.service.ExportService;
 import com.qcpg.qcpg.service.Neo4jIntegrationService;
+
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
+import java.io.FileWriter;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
+/**
+ * Service for integrating QASM files into a Code Property Graph (CPG).
+ * Handles the parsing, AST construction, CFG/PDG generation, and integration
+ * with Neo4j.
+ */
 @Service
 public class QasmIntegrationService {
 
     private final QasmParsingService parsingService;
     private final ExportService exportService;
-    private final Neo4jIntegrationService neo4jIntegrationService;
+    private final QasmCfgPdgBuilder cpgPdgBuilder;
+    private final QasmQuantumGraphBuilder quantumBuilder;
+    private final GraphCreationRepository graphCreationRepository;
 
-    public QasmIntegrationService(QasmParsingService parsingService, ExportService exportService, Neo4jIntegrationService neo4jIntegrationService) {
+    private static long globalIdCounter = 1; // Global counter for unique node IDs.
+
+    /**
+     * Constructor for QasmIntegrationService.
+     *
+     * @param parsingService          The service for parsing QASM code.
+     * @param exportService           The service for exporting graph data.
+     * @param cpgPdgBuilder           The builder for CFG and PDG graphs.
+     * @param quantumBuilder          The builder for quantum-specific graph
+     *                                components.
+     * @param graphCreationRepository The repository for interacting with Neo4j.
+     */
+    public QasmIntegrationService(QasmParsingService parsingService,
+            ExportService exportService,
+            Neo4jIntegrationService neo4jIntegrationService,
+            QasmCfgPdgBuilder cpgPdgBuilder,
+            QasmQuantumGraphBuilder quantumBuilder,
+            GraphCreationRepository graphCreationRepository) {
         this.parsingService = parsingService;
         this.exportService = exportService;
-        this.neo4jIntegrationService = neo4jIntegrationService;
+        this.cpgPdgBuilder = cpgPdgBuilder;
+        this.quantumBuilder = quantumBuilder;
+        this.graphCreationRepository = graphCreationRepository;
     }
 
-    public void processQasm(String qasmCode, String filename) throws Exception {
-        var programCtx = parsingService.parseContent(qasmCode);
+    /**
+     * Processes a single QASM file, generating a CPG and integrating it with Neo4j.
+     *
+     * @param qasmCode The QASM code as a string.
+     * @param filename The name of the QASM file.
+     * @throws Exception If the file cannot be processed.
+     */
+    public void processSingleQasmFile(String qasmCode, String filename) throws Exception {
+        try {
+            // Parse the QASM code and construct the AST.
+            var programCtx = parsingService.parseContent(qasmCode);
+            List<String> codeLines = Arrays.asList(qasmCode.split("\n"));
+            QasmAstBuilder astBuilder = new QasmAstBuilder();
+            AstGraph ast = astBuilder.build(programCtx, filename, codeLines);
 
-        List<String> codeLines = Arrays.asList(qasmCode.split("\n"));
+            // Collect nodes and edges from the AST.
+            List<NodeBase> allNodes = new ArrayList<>(ast.getAllNodes());
+            List<EdgeBase> allEdges = new ArrayList<>();
 
-        QasmAstBuilder astBuilder = new QasmAstBuilder();
-        AstGraph ast = astBuilder.build(programCtx, filename, codeLines);
+            // Add edges for the AST hierarchy.
+            for (AstNode n : ast.getAllNodes()) {
+                for (AstNode c : n.getChildren()) {
+                    Map<String, Object> edgeProps = Map.of("rel_type", "AST", "info", "ast_hierarchy");
+                    AstEdge edge = AstEdge.builder().from(n).to(c).properties(edgeProps).build();
+                    allEdges.add(edge);
+                }
+            }
 
-        QasmCfgBuilder cfgBuilder = new QasmCfgBuilder();
-        CfgGraph cfg = cfgBuilder.buildCFG(ast.getRoot());
+            // Build CFG and PDG edges and include their nodes.
+            List<EdgeBase> cfgEdges = cpgPdgBuilder.buildCfgEdges(ast.getRoot(), filename);
+            Set<NodeBase> cfgNodes = new HashSet<>();
+            for (EdgeBase e : cfgEdges) {
+                cfgNodes.add(e.getFrom());
+                cfgNodes.add(e.getTo());
+            }
+            for (NodeBase n : cfgNodes) {
+                if (!allNodes.contains(n)) {
+                    allNodes.add(n);
+                }
+            }
+            allEdges.addAll(cfgEdges);
 
-        QasmPdgBuilder pdgBuilder = new QasmPdgBuilder();
-        PdgGraph pdg = pdgBuilder.buildPDG(cfg);
+            List<AstNode> allAstNodes = ast.getAllNodes();
+            List<EdgeBase> pdgEdges = cpgPdgBuilder.buildPdgEdges(allAstNodes);
+            Set<NodeBase> pdgNodes = new HashSet<>();
+            for (EdgeBase e : pdgEdges) {
+                pdgNodes.add(e.getFrom());
+                pdgNodes.add(e.getTo());
+            }
+            for (NodeBase n : pdgNodes) {
+                if (!allNodes.contains(n)) {
+                    allNodes.add(n);
+                }
+            }
+            allEdges.addAll(pdgEdges);
 
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmssSSS"));
-        String folderName = "graph_" + timestamp;
+            // Add quantum-specific nodes and edges.
+            QuantumGraph qResult = quantumBuilder.buildQuantumGraph(codeLines, ast.getAllNodes());
+            allNodes.addAll(qResult.getQuantumNodes());
+            allEdges.addAll(qResult.getQuantumEdges());
 
-        String baseDir = "./src/main/resources/volumes/neo4j/import/";
-        File dir = new File(baseDir + folderName);
-        if (!dir.exists()) {
-            dir.mkdirs();
+            // Assign unique IDs to all nodes.
+            long startId = globalIdCounter;
+            for (NodeBase node : allNodes) {
+                node.setId(startId++);
+            }
+            globalIdCounter = startId;
+
+            // Prepare files for Neo4j integration.
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmssSSS"));
+            String safeFilename = filename.replaceAll("[^a-zA-Z0-9-_\\.]", "_");
+            String folderName = "graph_" + timestamp + "_" + safeFilename;
+
+            String baseDir = "./src/main/resources/volumes/neo4j/import/";
+            File dir = new File(baseDir + folderName);
+            if (!dir.exists())
+                dir.mkdirs();
+
+            String nodesFile = baseDir + folderName + "/nodes.csv";
+            String edgesFile = baseDir + folderName + "/edges.csv";
+
+            String qasmFilePath = baseDir + folderName + "/" + safeFilename;
+            try (FileWriter fw = new FileWriter(qasmFilePath)) {
+                fw.write(qasmCode);
+            }
+
+            String folderPath = "file:///" + folderName + "/";
+            String nodesFilePath = folderPath + "nodes.csv";
+            String edgesFilePath = folderPath + "edges.csv";
+
+            // Export nodes and edges to CSV.
+            exportService.exportCpgToCsv(allNodes, allEdges, nodesFile, edgesFile);
+
+            // Clear the Neo4j database and load the new graph data.
+            graphCreationRepository.clearDB();
+            graphCreationRepository.insertNodesFromCsv(nodesFilePath);
+            graphCreationRepository.insertEdgesFromCsv(edgesFilePath);
+
+        } catch (Exception e) {
+            throw new Exception("Could not process the file: " + filename + " - " + e.getMessage());
         }
+    }
 
-        String astNodes = baseDir + folderName + "/ast_nodes.csv";
-        String astEdges = baseDir + folderName + "/ast_edges.csv";
-        exportService.exportAstToCsv(ast, astNodes, astEdges);
-
-        String cfgNodes = baseDir + folderName + "/cfg_nodes.csv";
-        String cfgEdges = baseDir + folderName + "/cfg_edges.csv";
-        exportService.exportCfgToCsv(cfg, cfgNodes, cfgEdges);
-
-        String pdgNodes = baseDir + folderName + "/pdg_nodes.csv";
-        String pdgEdges = baseDir + folderName + "/pdg_edges.csv";
-        exportService.exportPdgToCsv(pdg, pdgNodes, pdgEdges);
-
-        String cypherDelete= 
-            "MATCH (n) DETACH DELETE n;";
-        String cypherCreate = 
-            "CALL {\n" +
-            "  LOAD CSV WITH HEADERS FROM 'file:///" + folderName + "/ast_nodes.csv' AS line\n" +
-            "  WITH line, apoc.convert.fromJsonList(line.labels) AS labList, apoc.convert.fromJsonMap(line.properties) AS props\n" +
-            "  CREATE (n)\n" +
-            "  SET n.id = toInteger(line.id)\n" +
-            "  SET n += props\n" +
-            "  WITH n, labList\n" +
-            "  CALL apoc.create.addLabels(n, labList) YIELD node\n" +
-            "  RETURN count(*) AS astNodesCreated\n" +
-            "}\n" +
-            "CALL {\n" +
-            "  LOAD CSV WITH HEADERS FROM 'file:///" + folderName + "/ast_edges.csv' AS line\n" +
-            "  WITH line, apoc.convert.fromJsonMap(line.properties) AS eprops\n" +
-            "  MATCH (start {id: toInteger(line.start_id)}), (end {id: toInteger(line.end_id)})\n" +
-            "  WITH eprops, start, end\n" +
-            "  CALL {\n" +
-            "    WITH eprops\n" +
-            "    RETURN eprops.rel_type AS relType\n" +
-            "  }\n" +
-            "  CALL apoc.create.relationship(start, relType, eprops, end) YIELD rel\n" +
-            "  RETURN count(*) AS astRelsCreated\n" +
-            "}\n" +
-            "// CFG\n" +
-            "CALL {\n" +
-            "  LOAD CSV WITH HEADERS FROM 'file:///" + folderName + "/cfg_nodes.csv' AS line\n" +
-            "  WITH line, apoc.convert.fromJsonList(line.labels) AS labList, apoc.convert.fromJsonMap(line.properties) AS props\n" +
-            "  CREATE (n)\n" +
-            "  SET n.id = toInteger(line.id)\n" +
-            "  SET n += props\n" +
-            "  WITH n, labList\n" +
-            "  CALL apoc.create.addLabels(n, labList) YIELD node\n" +
-            "  RETURN count(*) AS cfgNodesCreated\n" +
-            "}\n" +
-            "CALL {\n" +
-            "  LOAD CSV WITH HEADERS FROM 'file:///" + folderName + "/cfg_edges.csv' AS line\n" +
-            "  WITH line, apoc.convert.fromJsonMap(line.properties) AS eprops\n" +
-            "  MATCH (start {id: toInteger(line.start_id)}), (end {id: toInteger(line.end_id)})\n" +
-            "  WITH eprops, start, end\n" +
-            "  CALL {\n" +
-            "    WITH eprops\n" +
-            "    RETURN eprops.rel_type AS relType\n" +
-            "  }\n" +
-            "  CALL apoc.create.relationship(start, relType, eprops, end) YIELD rel\n" +
-            "  RETURN count(*) AS cfgRelsCreated\n" +
-            "}\n" +
-            "// PDG\n" +
-            "CALL {\n" +
-            "  LOAD CSV WITH HEADERS FROM 'file:///" + folderName + "/pdg_nodes.csv' AS line\n" +
-            "  WITH line, apoc.convert.fromJsonList(line.labels) AS labList, apoc.convert.fromJsonMap(line.properties) AS props\n" +
-            "  CREATE (n)\n" +
-            "  SET n.id = toInteger(line.id)\n" +
-            "  SET n += props\n" +
-            "  WITH n, labList\n" +
-            "  CALL apoc.create.addLabels(n, labList) YIELD node\n" +
-            "  RETURN count(*) AS pdgNodesCreated\n" +
-            "}\n" +
-            "CALL {\n" +
-            "  LOAD CSV WITH HEADERS FROM 'file:///" + folderName + "/pdg_edges.csv' AS line\n" +
-            "  WITH line, apoc.convert.fromJsonMap(line.properties) AS eprops\n" +
-            "  MATCH (start {id: toInteger(line.start_id)}), (end {id: toInteger(line.end_id)})\n" +
-            "  WITH eprops, start, end\n" +
-            "  CALL {\n" +
-            "    WITH eprops\n" +
-            "    RETURN eprops.rel_type AS relType\n" +
-            "  }\n" +
-            "  CALL apoc.create.relationship(start, relType, eprops, end) YIELD rel\n" +
-            "  RETURN count(*) AS pdgRelsCreated\n" +
-            "}\n" +
-            "RETURN \"Import completed\" AS message;";
-
-        neo4jIntegrationService.runCypher(cypherDelete);
-        neo4jIntegrationService.runCypher(cypherCreate);
+    /**
+     * Processes multiple QASM files in a batch operation.
+     *
+     * @param files An array of QASM files to process.
+     * @throws Exception If any file cannot be processed.
+     */
+    public void processMultipleQasmFiles(MultipartFile[] files) throws Exception {
+        for (MultipartFile file : files) {
+            if (!file.isEmpty()) {
+                String qasmContent = new String(file.getBytes());
+                processSingleQasmFile(qasmContent, file.getOriginalFilename());
+            }
+        }
     }
 }

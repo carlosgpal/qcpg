@@ -1,3 +1,4 @@
 OPENQASM 3.0;
-qubit q[2], r[3];
-bit c[4];
+qubit[2] q;
+qubit[3] r;
+bit[4] c;

@@ -1,6 +1,6 @@
 OPENQASM 3.0;
-function custom_gate(float[32] theta) {
+gate custom_gate(theta) q {
     rx(theta) q;
 }
 qubit q;
-custom_gate(1.5708);
+custom_gate(1.5708) q;

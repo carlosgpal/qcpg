@@ -1,7 +1,10 @@
 OPENQASM 3.0;
-qubit q[4];
-int start = 1;
-int end = 3;
-for int i in [start:end] {
+
+const int start = 1;
+const int endw = 3;
+
+qubit[4] q;
+
+for int i in [start:endw] {
     x q[i];
 }

@@ -1,3 +1,3 @@
 OPENQASM 3.0;
-qubit q[3];
-bit c[3];
+qubit[3] q;
+bit[3] c;

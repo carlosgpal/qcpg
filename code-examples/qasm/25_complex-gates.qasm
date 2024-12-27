@@ -1,8 +1,8 @@
 OPENQASM 3.0;
-gate complex_gate q, r {
+gate complex_gate(qubit q, qubit r) {
     h q;
     cx q, r;
     x q;
 }
-qubit q[2];
+qubit[2] q;
 complex_gate q[0], q[1];

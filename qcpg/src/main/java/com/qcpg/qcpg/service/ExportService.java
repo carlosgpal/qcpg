@@ -2,26 +2,42 @@ package com.qcpg.qcpg.service;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.qcpg.qcpg.graph.*;
+import com.qcpg.qcpg.model.graphCreation.*;
+
 import org.springframework.stereotype.Service;
 
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
+/**
+ * Service for exporting the Code Property Graph (CPG) to CSV files.
+ * Converts nodes and edges into CSV format suitable for Neo4j import.
+ */
 @Service
 public class ExportService {
 
-    private static final Gson GSON = new GsonBuilder().create();
+    private static final Gson GSON = new GsonBuilder().create(); // Gson instance for JSON conversion.
 
-    private String mapToJsonField(Map<String,Object> map) {
+    /**
+     * Converts a map to a JSON string formatted for use in CSV fields.
+     *
+     * @param map The map to convert.
+     * @return A JSON string formatted for CSV.
+     */
+    private String mapToJsonField(Map<String, Object> map) {
         String json = GSON.toJson(map);
         json = json.replace("\\\"", "\"");
         json = json.replace("\"", "\"\"");
         return "\"" + json + "\"";
     }
-    
+
+    /**
+     * Converts a list to a JSON string formatted for use in CSV fields.
+     *
+     * @param list The list to convert.
+     * @return A JSON string formatted for CSV.
+     */
     private String listToJsonField(List<String> list) {
         String json = GSON.toJson(list);
         json = json.replace("\\\"", "\"");
@@ -29,89 +45,34 @@ public class ExportService {
         return "\"" + json + "\"";
     }
 
-    public void exportAstToCsv(AstGraph ast, String nodesFile, String edgesFile) throws IOException {
+    /**
+     * Exports the nodes and edges of a CPG to separate CSV files.
+     *
+     * @param allNodes  The list of nodes to export.
+     * @param allEdges  The list of edges to export.
+     * @param nodesFile The file path for the nodes CSV.
+     * @param edgesFile The file path for the edges CSV.
+     * @throws IOException If an error occurs while writing to the files.
+     */
+    public void exportCpgToCsv(List<NodeBase> allNodes, List<EdgeBase> allEdges, String nodesFile, String edgesFile)
+            throws IOException {
         try (FileWriter nout = new FileWriter(nodesFile);
-             FileWriter eout = new FileWriter(edgesFile)) {
-
+                FileWriter eout = new FileWriter(edgesFile)) {
+            // Write CSV headers
             nout.write("id,labels,properties\n");
             eout.write("start_id,end_id,properties\n");
 
-            List<AstNode> nodes = ast.getAllNodes();
-            for (AstNode n : nodes) {
-
-                List<String> labels = n.getLabels();
-                Map<String,Object> props = n.getProperties();
-
-                String labelsField = listToJsonField(labels);
-                String propsField = mapToJsonField(props);
-
+            // Write node data to the nodes file
+            for (NodeBase n : allNodes) {
+                String labelsField = listToJsonField(n.getLabels());
+                String propsField = mapToJsonField(n.getProperties());
                 nout.write(n.getId() + "," + labelsField + "," + propsField + "\n");
-
-                Map<String,Object> edgeProps = Map.of(
-                        "rel_type","CHILD",
-                        "weight",10,
-                        "info","some edge info",
-                        "extra","edge_extra"
-                );
-                String edgePropsField = mapToJsonField(edgeProps);
-                for (AstNode c : n.getChildren()) {
-                    eout.write(n.getId() + "," + c.getId() + "," + edgePropsField + "\n");
-                }
-            }
-        }
-    }
-
-    public void exportCfgToCsv(CfgGraph cfg, String nodesFile, String edgesFile) throws IOException {
-        try (FileWriter nout = new FileWriter(nodesFile);
-             FileWriter eout = new FileWriter(edgesFile)) {
-
-            nout.write("id,labels,properties\n");
-            eout.write("start_id,end_id,properties\n");
-
-            for (CfgNode n : cfg.getAllNodes()) {
-                List<String> labels = n.getLabels();
-                Map<String,Object> props = n.getProperties();
-
-                String labelsField = listToJsonField(labels);
-                String propsField = mapToJsonField(props);
-
-                nout.write(n.getId() + "," + labelsField + "," + propsField + "\n");
-
-                Map<String,Object> edgeProps = Map.of(
-                        "rel_type","FLOWS_TO",
-                        "weight",5,
-                        "info","cfg edge info",
-                        "extra","edge_extra"
-                );
-                String edgePropsField = mapToJsonField(edgeProps);
-
-                for (CfgNode succ : n.getSuccessors()) {
-                    eout.write(n.getId() + "," + succ.getId() + "," + edgePropsField + "\n");
-                }
-            }
-        }
-    }
-
-    public void exportPdgToCsv(PdgGraph pdg, String nodesFile, String edgesFile) throws IOException {
-        try (FileWriter nout = new FileWriter(nodesFile);
-             FileWriter eout = new FileWriter(edgesFile)) {
-            nout.write("id,labels,properties\n");
-            eout.write("start_id,end_id,properties\n");
-
-            for (PdgNode pn : pdg.getNodes()) {
-                List<String> labels = pn.getLabels();
-                Map<String,Object> props = pn.getProperties();
-
-                String labelsField = listToJsonField(labels);
-                String propsField = mapToJsonField(props);
-
-                nout.write(pn.getId() + "," + labelsField + "," + propsField + "\n");
             }
 
-            for (PdgEdge edge : pdg.getEdges()) {
-                Map<String,Object> eprops = edge.getProperties();
-                String edgePropsField = mapToJsonField(eprops);
-                eout.write(edge.getFrom().getId() + "," + edge.getTo().getId() + "," + edgePropsField + "\n");
+            // Write edge data to the edges file
+            for (EdgeBase edge : allEdges) {
+                String propsField = mapToJsonField(edge.getProperties());
+                eout.write(edge.getFrom().getId() + "," + edge.getTo().getId() + "," + propsField + "\n");
             }
         }
     }
