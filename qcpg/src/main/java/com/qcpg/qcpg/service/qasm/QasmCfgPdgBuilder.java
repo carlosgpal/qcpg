@@ -20,7 +20,6 @@ public class QasmCfgPdgBuilder {
     private static final Set<String> ALLOWED_LABELS = new HashSet<>(Arrays.asList(
             "ARRAY_DECLARATION",
             "GATE_DEFINITION",
-            "CLASSICAL_DECLARATION",
             "INDEX_ASSIGNMENT",
             "CONST_DECLARATION",
             "FOR_LOOP",
@@ -153,16 +152,80 @@ public class QasmCfgPdgBuilder {
 
         // Create data dependency edges for variables used in statements.
         for (AstNode n : filtered) {
-            String d = ((String) n.getProperties().getOrDefault("descriptive_type", "")).toLowerCase();
-            if (d.equals("measure_call")) {
-                String qName = (String) n.getProperties().getOrDefault("measured_qubit", "");
-                if (lastDef.containsKey(qName)) {
-                    edges.add(edge(lastDef.get(qName), n, "PDG_DATA", "data_dep"));
+            String descriptiveType = (String) n.getProperties().get("descriptive_type");
+        
+            if ("CONST_DECLARATION".equals(descriptiveType)) {
+                String constName = (String) n.getProperties().get("const_name");
+                if (constName != null && lastDef.containsKey(constName)) {
+                    for (AstNode refNode : filtered) {
+                        String parameters = (String) refNode.getProperties().getOrDefault("parameters", "");
+                        if (parameters.contains(constName)) {
+                            edges.add(edge(lastDef.get(constName), refNode, "PDG_DATA", "data_dep_const"));
+                        }
+                    }
                 }
-            } else if (d.equals("gate_call")) {
-                String qName = (String) n.getProperties().getOrDefault("target_qubit", "");
-                if (!qName.isEmpty() && lastDef.containsKey(qName)) {
-                    edges.add(edge(lastDef.get(qName), n, "PDG_DATA", "data_dep"));
+            } else if ("GATE_CALL".equals(descriptiveType)) {
+                String operands = (String) n.getProperties().get("operands");
+                if (operands != null) {
+                    for (String operand : operands.split(",")) {
+                        String normalizedOperand = operand.trim();
+                        if (lastDef.containsKey(normalizedOperand)) {
+                            edges.add(edge(lastDef.get(normalizedOperand), n, "PDG_DATA", "data_dep"));
+                        }
+                    }
+                }
+            } else if ("MEASURE_CALL".equals(descriptiveType)) {
+                String measuredQubit = (String) n.getProperties().get("measured_qubit");
+                String measuredQubitIndex = (String) n.getProperties().get("measured_qubit_index");
+                String destinationBit = (String) n.getProperties().get("destination_bit");
+                String destinationBitIndex = (String) n.getProperties().get("destination_bit_index");
+
+                String measuredQubitKey = measuredQubit + "[" + measuredQubitIndex + "]";
+                String destinationBitKey = destinationBit + "[" + destinationBitIndex + "]";
+
+                if (measuredQubit != null && lastDef.containsKey(measuredQubitKey)) {
+                    edges.add(edge(lastDef.get(measuredQubitKey), n, "PDG_DATA", "data_dep_qubit"));
+                } else {
+                    System.err.println("Warning: Measured qubit not found in lastDef: " + measuredQubitKey);
+                }
+
+                if (destinationBit != null && lastDef.containsKey(destinationBitKey)) {
+                    edges.add(edge(lastDef.get(destinationBitKey), n, "PDG_DATA", "data_dep_bit"));
+                } else {
+                    System.err.println("Warning: Destination bit not found in lastDef: " + destinationBitKey);
+                }
+            } else if ("RESET_STATEMENT".equals(descriptiveType)) {
+                String resetQubit = (String) n.getProperties().get("reset_qubit");
+                boolean isRegister = lastDef.keySet().stream().anyMatch(key -> key.startsWith(resetQubit + "["));
+
+                if (isRegister) {
+                    for (String key : lastDef.keySet()) {
+                        if (key.startsWith(resetQubit + "[")) {
+                            edges.add(edge(lastDef.get(key), n, "PDG_DATA", "data_dep_reset"));
+                        }
+                    }
+                } else {
+                    if (lastDef.containsKey(resetQubit)) {
+                        edges.add(edge(lastDef.get(resetQubit), n, "PDG_DATA", "data_dep_reset"));
+                    }
+                }
+            } else if ("BARRIER_STATEMENT".equals(descriptiveType)) {
+                String barrierTargets = (String) n.getProperties().get("barrier_operands");
+                boolean isRegister = lastDef.keySet().stream().anyMatch(key -> key.startsWith(barrierTargets + "["));
+
+                if (isRegister) {
+                    for (String key : lastDef.keySet()) {
+                        if (key.startsWith(barrierTargets + "[")) {
+                            edges.add(edge(lastDef.get(key), n, "PDG_DATA", "data_dep_barrier"));
+                        }
+                    }
+                } else {
+                    for (String target : barrierTargets.split(",")) {
+                        String normalizedTarget = target.trim();
+                        if (lastDef.containsKey(normalizedTarget)) {
+                            edges.add(edge(lastDef.get(normalizedTarget), n, "PDG_DATA", "data_dep_barrier"));
+                        }
+                    }
                 }
             }
         }
@@ -252,24 +315,30 @@ public class QasmCfgPdgBuilder {
 
     // Tracks variable definitions for dependency tracking in the PDG.
     private void defineVar(AstNode n, Map<String, AstNode> lastDef) {
+        String descriptiveType = (String) n.getProperties().getOrDefault("descriptive_type", "");
         String d = (String) n.getProperties().getOrDefault("descriptive_type", "");
 
-        if (d.equals("QUBIT_DECLARATION")) {
-            String var = (String) n.getProperties().get("qubit_name");
-            if (var != null && !var.isEmpty())
-                lastDef.put(var, n);
-        } else if (d.equals("BIT_DECLARATION")) {
-            String var = (String) n.getProperties().get("bit_name");
-            if (var != null && !var.isEmpty())
-                lastDef.put(var, n);
+        if ("QUBIT_DECLARATION".equals(descriptiveType)) {
+            String qubitName = (String) n.getProperties().get("qubit_name");
+            int size = Integer.parseInt((String) n.getProperties().getOrDefault("qubit_size", "1"));
+            for (int i = 0; i < size; i++) {
+                lastDef.put(qubitName + "[" + i + "]", n);
+            }
+            lastDef.put(qubitName, n);
+        } else if ("BIT_DECLARATION".equals(descriptiveType)) {
+            String bitName = (String) n.getProperties().get("bit_name");
+            int size = Integer.parseInt((String) n.getProperties().getOrDefault("bit_size", "1"));
+            for (int i = 0; i < size; i++) {
+                lastDef.put(bitName + "[" + i + "]", n);
+            }
         } else if (d.equals("CLASSICAL_DECLARATION")) {
             String var = (String) n.getProperties().get("var_name");
             if (var != null && !var.isEmpty())
                 lastDef.put(var, n);
-        } else if (d.equals("INDEX_ASSIGNMENT")) {
-            String target = (String) n.getProperties().get("target_name");
-            if (target != null && !target.isEmpty())
-                lastDef.put(target, n);
+        } else if ("INDEX_ASSIGNMENT".equals(descriptiveType)) {
+            String target = (String) n.getProperties().get("assigned_array") + "["
+                    + n.getProperties().get("assigned_index") + "]";
+            lastDef.put(target, n);
         } else if (d.equals("CONST_DECLARATION")) {
             String constName = (String) n.getProperties().get("const_name");
             if (constName != null && !constName.isEmpty())

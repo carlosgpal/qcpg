@@ -152,7 +152,9 @@ public class QasmIntegrationService {
             graphCreationRepository.insertEdgesFromCsv(edgesFilePath);
 
         } catch (Exception e) {
-            throw new Exception("Could not process the file: " + filename + " - " + e.getMessage());
+            System.err.println("Error processing file: " + filename);
+            e.printStackTrace();
+            throw new Exception("Could not process the file: " + filename + " - " + e.getMessage(), e);
         }
     }
 

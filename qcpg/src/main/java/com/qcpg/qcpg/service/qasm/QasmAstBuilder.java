@@ -151,13 +151,25 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
 
         // Detect quantum bit declaration statements
         if (nodeType.toLowerCase().contains("quantumdeclarationstatement")) {
-            Pattern qubitDecl = Pattern.compile("\\bqubit\\[(\\d+)\\]\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*;");
-            Matcher mQubit = qubitDecl.matcher(code);
-            if (mQubit.find()) {
+            Pattern qubitDeclWithSize = Pattern.compile("\\bqubit\\[(\\d+)\\]\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*;");
+            Matcher mQubitWithSize = qubitDeclWithSize.matcher(code);
+
+            if (mQubitWithSize.find()) {
                 props.put("descriptive_type", "QUBIT_DECLARATION");
-                props.put("qubit_size", mQubit.group(1));
-                props.put("qubit_name", mQubit.group(2));
-                props.put("display_name", "Qubit declaration: " + mQubit.group(2) + "[" + mQubit.group(1) + "]");
+                props.put("qubit_size", mQubitWithSize.group(1));
+                props.put("qubit_name", mQubitWithSize.group(2));
+                props.put("display_name",
+                        "Qubit declaration: " + mQubitWithSize.group(2) + "[" + mQubitWithSize.group(1) + "]");
+            } else {
+                Pattern qubitDeclNoSize = Pattern.compile("\\bqubit\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*;");
+                Matcher mQubitNoSize = qubitDeclNoSize.matcher(code);
+
+                if (mQubitNoSize.find()) {
+                    props.put("descriptive_type", "QUBIT_DECLARATION");
+                    props.put("qubit_size", "1");
+                    props.put("qubit_name", mQubitNoSize.group(1));
+                    props.put("display_name", "Qubit declaration: " + mQubitNoSize.group(1) + "[1]");
+                }
             }
         }
 
@@ -189,21 +201,28 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
             }
         }
 
-        // Detect gate call statements with multiple qubits
         if (nodeType.toLowerCase().contains("gatecallstatement")) {
-            if (!props.containsKey("descriptive_type") && code.matches("^[a-zA-Z_].*;\\s*$")) {
-                Pattern gateCallMulti = Pattern.compile("\\b([a-zA-Z_][0-9a-zA-Z_]*)\\s+([^;]+);");
-                Matcher mMulti = gateCallMulti.matcher(code);
-                if (mMulti.find()) {
-                    String gate = mMulti.group(1);
-                    String operands = mMulti.group(2).trim();
-                    if (!operands.contains("=") && !operands.contains("[") && operands.contains(",")) {
-                        props.put("descriptive_type", "GATE_CALL");
-                        props.put("gate_name", gate);
-                        props.put("operands", operands);
-                        props.put("display_name", "Gate call: " + gate + " on " + operands);
-                    }
+            Pattern gateCall = Pattern.compile(
+                    "\\b([a-zA-Z_][0-9a-zA-Z_]*)\\s*(\\([^)]*\\))?\\s+([^;]+);");
+            Matcher mGateCall = gateCall.matcher(code);
+            if (mGateCall.find()) {
+                String gateName = mGateCall.group(1);
+                String parameters = Optional.ofNullable(mGateCall.group(2)).orElse("").trim();
+                String operands = mGateCall.group(3).trim();
+
+                // Validar que los operandos no estén vacíos
+                if (operands.isEmpty()) {
+                    throw new IllegalArgumentException("Gate call detected with empty operands: " + code);
                 }
+
+                props.put("descriptive_type", "GATE_CALL");
+                props.put("gate_name", gateName);
+                props.put("parameters", parameters);
+                props.put("operands", operands);
+                props.put("display_name", "Gate call: " + gateName + " " + parameters + " on " + operands);
+            } else {
+                // Loguear si no se detecta un patrón válido
+                System.err.println("Warning: Unable to match gate call pattern in code: " + code);
             }
         }
 
@@ -224,22 +243,29 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
         }
 
         // Detect reset statements
-        Pattern resetPat = Pattern.compile("\\breset\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\[(\\d+)\\]\\s*;");
-        Matcher mReset = resetPat.matcher(code);
-        if (mReset.find()) {
-            props.put("descriptive_type", "RESET_STATEMENT");
-            props.put("reset_qubit", mReset.group(1));
-            props.put("reset_index", mReset.group(2));
-            props.put("display_name", "Reset: " + mReset.group(1) + "[" + mReset.group(2) + "]");
+        if (nodeType.toLowerCase().contains("resetstatement")) {
+            Pattern resetPat = Pattern.compile("\\breset\\s+([^;]+);");
+            Matcher mReset = resetPat.matcher(code);
+            if (mReset.find()) {
+                String targets = mReset.group(1).trim();
+                props.put("descriptive_type", "RESET_STATEMENT");
+                props.put("reset_qubit", targets);
+                props.put("expand_register", targets.equals("q"));
+                props.put("display_name", "Reset: " + targets);
+            }
         }
 
-        // Detect barrier statements
-        Pattern barrierPat = Pattern.compile("\\bbarrier\\s+([^;]+);");
-        Matcher mBarrier = barrierPat.matcher(code);
-        if (mBarrier.find()) {
-            props.put("descriptive_type", "BARRIER_STATEMENT");
-            props.put("barrier_operands", mBarrier.group(1).trim());
-            props.put("display_name", "Barrier: " + mBarrier.group(1).trim());
+        // Detect barrier statementss
+        if (nodeType.toLowerCase().contains("barrierstatement")) {
+            Pattern barrierPat = Pattern.compile("\\bbarrier\\s+([^;]+);");
+            Matcher mBarrier = barrierPat.matcher(code);
+            if (mBarrier.find()) {
+                String targets = mBarrier.group(1).trim();
+                props.put("descriptive_type", "BARRIER_STATEMENT");
+                props.put("barrier_operands", targets);
+                props.put("expand_register", targets.equals("q"));
+                props.put("display_name", "Barrier: " + targets);
+            }
         }
 
         // Detect if statements
@@ -254,30 +280,35 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
         }
 
         // Detect for statements
-        Pattern forPattern = Pattern
-                .compile("\\bfor\\s+(int\\s+)?([a-zA-Z_][0-9a-zA-Z_]*)\\s+in\\s+\\[(\\d+):(\\d+)\\]");
-        Matcher mFor = forPattern.matcher(code);
-        if (mFor.find()) {
-            props.put("descriptive_type", "FOR_LOOP");
-            props.put("loop_var", mFor.group(2));
-            props.put("loop_start", mFor.group(3));
-            props.put("loop_end", mFor.group(4));
-            props.put("display_name",
-                    "For loop " + mFor.group(2) + " in [" + mFor.group(3) + ":" + mFor.group(4) + "]");
+        if (nodeType.toLowerCase().contains("forstatement")) {
+            Pattern forPattern = Pattern
+                    .compile("\\bfor\\s+(int\\s+)?([a-zA-Z_][0-9a-zA-Z_]*)\\s+in\\s+\\[(\\d+):(\\d+)\\]");
+            Matcher mFor = forPattern.matcher(code);
+            if (mFor.find()) {
+                props.put("descriptive_type", "FOR_LOOP");
+                props.put("loop_var", mFor.group(2));
+                props.put("loop_start", mFor.group(3));
+                props.put("loop_end", mFor.group(4));
+                props.put("display_name",
+                        "For loop " + mFor.group(2) + " in [" + mFor.group(3) + ":" + mFor.group(4) + "]");
+            }
         }
 
         // Detect constants statements
-        Pattern constDecl = Pattern
-                .compile("\\bconst\\s+([a-zA-Z0-9\\[\\]]+)\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*=\\s*([^;]+);");
-        Matcher mConst = constDecl.matcher(code);
-        if (mConst.find()) {
-            props.put("descriptive_type", "CONST_DECLARATION");
-            props.put("const_type", mConst.group(1));
-            props.put("const_name", mConst.group(2));
-            props.put("const_value", mConst.group(3));
-            props.put("display_name", "Const declaration: " + mConst.group(2)
-                    + " of type " + mConst.group(1)
-                    + " = " + mConst.group(3));
+
+        if (nodeType.toLowerCase().contains("constdeclarationstatement")) {
+            Pattern constDecl = Pattern
+                    .compile("\\bconst\\s+([a-zA-Z0-9\\[\\]]+)\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*=\\s*([^;]+);");
+            Matcher mConst = constDecl.matcher(code);
+            if (mConst.find()) {
+                props.put("descriptive_type", "CONST_DECLARATION");
+                props.put("const_type", mConst.group(1));
+                props.put("const_name", mConst.group(2));
+                props.put("const_value", mConst.group(3));
+                props.put("display_name", "Const declaration: " + mConst.group(2)
+                        + " of type " + mConst.group(1)
+                        + " = " + mConst.group(3));
+            }
         }
 
         // Detect index assigment statements

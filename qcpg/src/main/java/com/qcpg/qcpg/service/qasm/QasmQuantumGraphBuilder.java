@@ -41,7 +41,7 @@ public class QasmQuantumGraphBuilder {
                 String qubitName = (String) astNode.getProperties().get("qubit_name");
                 for (int i = 0; i < size; i++) {
                     String qubitKey = qubitName + "[" + i + "]";
-                    NodeBase qubitNode = createNode("QUANTUM_QUBIT", qubitKey, astNode);
+                    NodeBase qubitNode = createNode("QUANTUM_BIT", qubitKey, astNode);
                     qubitNodes.put(qubitKey, qubitNode);
                     quantumNodes.add(qubitNode);
                     createReferenceEdge(quantumEdges, qubitNode, astNode);
@@ -90,18 +90,37 @@ public class QasmQuantumGraphBuilder {
     private void processGateCall(List<EdgeBase> quantumEdges, List<NodeBase> quantumNodes,
             Map<String, NodeBase> qubitNodes, AstNode astNode) {
         String gateName = (String) astNode.getProperties().get("gate_name");
-        String targetQubit = (String) astNode.getProperties().get("target_qubit");
-        String targetIndex = (String) astNode.getProperties().get("target_index");
+        String operands = (String) astNode.getProperties().get("operands");
+        String parameters = (String) astNode.getProperties().getOrDefault("parameters", "");
 
-        String normalizedTarget = targetQubit + "[" + targetIndex + "]";
+        if (gateName == null || operands == null || operands.isEmpty()) {
+            throw new IllegalStateException(
+                    "Gate call node is missing required properties: " + astNode.getProperties());
+        }
+
         NodeBase gateNode = createNodeWithLabels("QUANTUM_GATE", "QUANTUM_GATE_" + gateName.toUpperCase(), gateName,
                 astNode);
+
+        Map<String, Object> mutableProperties = new HashMap<>(gateNode.getProperties());
+        mutableProperties.put("parameters", parameters);
+        gateNode.setProperties(mutableProperties);
+
         quantumNodes.add(gateNode);
         createReferenceEdge(quantumEdges, gateNode, astNode);
 
-        if (qubitNodes.containsKey(normalizedTarget)) {
-            quantumEdges.add(
-                    createEdgeWithRole(gateNode, qubitNodes.get(normalizedTarget), "QUANTUM_GATE_OPERAND", "target"));
+        String[] operandList = operands.split(",");
+        for (int i = 0; i < operandList.length; i++) {
+            String normalizedOperand = operandList[i].trim();
+
+            if (qubitNodes.containsKey(normalizedOperand)) {
+                quantumEdges.add(createEdgeWithRole(gateNode, qubitNodes.get(normalizedOperand),
+                        "QUANTUM_OPERAND_" + i, "target_" + i));
+            } else if (qubitNodes.containsKey(normalizedOperand + "[0]")) {
+                quantumEdges.add(createEdgeWithRole(gateNode, qubitNodes.get(normalizedOperand + "[0]"),
+                        "QUANTUM_OPERAND_" + i, "target_" + i));
+            } else {
+                System.err.println("Warning: Operand not found in qubit nodes: " + normalizedOperand);
+            }
         }
     }
 
@@ -129,27 +148,54 @@ public class QasmQuantumGraphBuilder {
 
     private void processResetStatement(List<EdgeBase> quantumEdges, List<NodeBase> quantumNodes,
             Map<String, NodeBase> qubitNodes, AstNode astNode) {
-        String resetTarget = Optional.ofNullable((String) astNode.getProperties().get("reset_qubit")).orElse("");
-        if (qubitNodes.containsKey(resetTarget)) {
-            NodeBase resetNode = createNode("QUANTUM_RESET", resetTarget, astNode);
-            quantumNodes.add(resetNode);
-            quantumEdges.add(createEdge(resetNode, qubitNodes.get(resetTarget), "QUANTUM_DEPENDENCY"));
-            createReferenceEdge(quantumEdges, resetNode, astNode);
+        String resetQubit = (String) astNode.getProperties().get("reset_qubit");
+        boolean isRegister = qubitNodes.keySet().stream().anyMatch(key -> key.startsWith(resetQubit + "["));
+        NodeBase resetNode = createNode("QUANTUM_RESET", "Reset", astNode);
+        quantumNodes.add(resetNode);
+        createReferenceEdge(quantumEdges, resetNode, astNode);
+
+        if (isRegister) {
+            for (String key : qubitNodes.keySet()) {
+                if (key.startsWith(resetQubit + "[")) {
+                    quantumEdges.add(createEdgeWithRole(resetNode, qubitNodes.get(key),
+                            "QUANTUM_OPERAND_0", "reset_target"));
+                }
+            }
+        } else {
+            if (qubitNodes.containsKey(resetQubit)) {
+                quantumEdges.add(createEdgeWithRole(resetNode, qubitNodes.get(resetQubit),
+                        "QUANTUM_OPERAND_0", "reset_target"));
+            } else {
+                System.err.println("Warning: Reset target not found in qubit nodes: " + resetQubit);
+            }
         }
     }
 
     private void processBarrierStatement(List<EdgeBase> quantumEdges, List<NodeBase> quantumNodes,
             Map<String, NodeBase> qubitNodes, AstNode astNode) {
-        String barrierTargets = Optional.ofNullable((String) astNode.getProperties().get("barrier_operands"))
-                .orElse("");
+        String barrierTargets = (String) astNode.getProperties().get("barrier_operands");
+        boolean isRegister = qubitNodes.keySet().stream().anyMatch(key -> key.startsWith(barrierTargets + "["));
         NodeBase barrierNode = createNode("QUANTUM_BARRIER", "Barrier", astNode);
         quantumNodes.add(barrierNode);
         createReferenceEdge(quantumEdges, barrierNode, astNode);
 
-        for (String target : barrierTargets.split(",")) {
-            target = target.trim();
-            if (qubitNodes.containsKey(target)) {
-                quantumEdges.add(createEdge(barrierNode, qubitNodes.get(target), "QUANTUM_DEPENDENCY"));
+        if (isRegister) {
+            for (String key : qubitNodes.keySet()) {
+                if (key.startsWith(barrierTargets + "[")) {
+                    quantumEdges.add(createEdgeWithRole(barrierNode, qubitNodes.get(key),
+                            "QUANTUM_OPERAND_0", "barrier_target"));
+                }
+            }
+        } else {
+            String[] targets = barrierTargets.split(",");
+            for (int i = 0; i < targets.length; i++) {
+                String normalizedTarget = targets[i].trim();
+                if (qubitNodes.containsKey(normalizedTarget)) {
+                    quantumEdges.add(createEdgeWithRole(barrierNode, qubitNodes.get(normalizedTarget),
+                            "QUANTUM_OPERAND_" + i, "barrier_target_" + i));
+                } else {
+                    System.err.println("Warning: Barrier target not found in qubit nodes: " + normalizedTarget);
+                }
             }
         }
     }
@@ -169,7 +215,8 @@ public class QasmQuantumGraphBuilder {
                 .labels(List.of(type))
                 .properties(Map.of(
                         "name", name,
-                        "reference_node_id", referenceNode.getId()))
+                        "reference_node_id", referenceNode.getId(),
+                        "file", referenceNode.getProperties().get("file")))
                 .build();
     }
 
@@ -180,7 +227,9 @@ public class QasmQuantumGraphBuilder {
                 .labels(List.of(baseLabel, descriptiveLabel))
                 .properties(Map.of(
                         "name", name,
-                        "reference_node_id", referenceNode.getId()))
+                        "reference_node_id", referenceNode.getId(),
+                        "file", referenceNode.getProperties().get("file")))
+
                 .build();
     }
 
