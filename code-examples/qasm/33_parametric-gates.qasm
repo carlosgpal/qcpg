@@ -1,5 +1,5 @@
 OPENQASM 3.0;
-gate my_gate(float[32] theta) qubit q {
+gate my_gate(theta) q {
     rx(theta) q;
     h q;
 }

@@ -97,7 +97,7 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
         if (baseName.toLowerCase().contains("statement")
                 || baseName.equalsIgnoreCase("program")
                 || baseName.equalsIgnoreCase("scope")) {
-            props = detectPatterns(baseName, props);
+            props = detectPatterns(baseName, props, node);
         }
 
         // Adjust labels based on properties
@@ -120,6 +120,13 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
             node.getLabels().add("DECLARATION");
         }
 
+        props.replaceAll((key, value) -> {
+            if (value instanceof String) {
+                return ((String) value).replace("\"", "'").trim();
+            }
+            return value;
+        });
+
         node.setProperties(props);
     }
 
@@ -128,9 +135,10 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
      *
      * @param baseName The base name/type of the node.
      * @param props    The existing properties of the node.
+     * @param node     The current `AstNode` being analyzed.
      * @return The enriched properties map.
      */
-    private Map<String, Object> detectPatterns(String baseName, Map<String, Object> props) {
+    private Map<String, Object> detectPatterns(String baseName, Map<String, Object> props, AstNode node) {
         String code = (String) props.getOrDefault("code_line", "");
         String nodeType = (String) props.getOrDefault("node_type", "");
 
@@ -141,12 +149,15 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
         }
 
         // Detect include statements
-        Pattern includePattern = Pattern.compile("\\binclude\\s+\"([^\"]+)\"\\s*;");
-        Matcher mInclude = includePattern.matcher(code);
-        if (mInclude.find()) {
-            props.put("descriptive_type", "INCLUDE_STATEMENT");
-            props.put("included_file", mInclude.group(1));
-            props.put("display_name", "Include file: " + mInclude.group(1));
+        if (nodeType.toLowerCase().contains("includestatement")) {
+            Pattern includePattern = Pattern.compile("\\binclude\\s+(\"[^\"]*\"|'[^']*')\\s*;");
+            Matcher mInclude = includePattern.matcher(code);
+            if (mInclude.find()) {
+                String includedFile = mInclude.group(1);
+                props.put("descriptive_type", "INCLUDE_STATEMENT");
+                props.put("included_file", includedFile);
+                props.put("display_name", "Include file: " + mInclude.group(1));
+            }
         }
 
         // Detect quantum bit declaration statements
@@ -210,7 +221,6 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
                 String parameters = Optional.ofNullable(mGateCall.group(2)).orElse("").trim();
                 String operands = mGateCall.group(3).trim();
 
-                // Validar que los operandos no estén vacíos
                 if (operands.isEmpty()) {
                     throw new IllegalArgumentException("Gate call detected with empty operands: " + code);
                 }
@@ -223,6 +233,52 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
             } else {
                 // Loguear si no se detecta un patrón válido
                 System.err.println("Warning: Unable to match gate call pattern in code: " + code);
+            }
+        }
+
+        // Detect complex gates statements
+        if (nodeType.toLowerCase().contains("gatestatement")) {
+            String initialLine = (String) props.get("raw_line_of_code");
+
+            if (initialLine != null && !initialLine.isEmpty()) {
+                Pattern gateDefStart = Pattern.compile(
+                        "^\\s*gate\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*\\(([^)]*)\\)\\s+[a-zA-Z_][0-9a-zA-Z_]*\\s*\\{");
+                Pattern gateDeclarationPattern = Pattern
+                        .compile("^\\s*gate\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*\\{");
+                Matcher mGateDefStart = gateDefStart.matcher(initialLine);
+                Matcher mGateDeclaration = gateDeclarationPattern.matcher(initialLine);
+
+                if (mGateDefStart.find()) {
+                    props.put("descriptive_type", "GATE_DEFINITION");
+                    props.put("gate_def_name", mGateDefStart.group(1));
+                    props.put("gate_def_params", mGateDefStart.group(2).trim());
+                    props.put("display_name", "Gate definition start: " + mGateDefStart.group(1) + "("
+                            + mGateDefStart.group(2).trim() + ")");
+                }
+                if (mGateDeclaration.find()) {
+                    props.put("descriptive_type", "GATE_DECLARATION");
+                    props.put("gate_name", mGateDeclaration.group(1));
+                    props.put("gate_params", mGateDeclaration.group(2).trim());
+                    props.put("display_name",
+                            "Gate declaration: " + mGateDeclaration.group(1) + " " + mGateDeclaration.group(2).trim());
+                }
+            }
+        }
+
+        // Detect complex def statements
+        if (nodeType.toLowerCase().contains("defstatement")) {
+            String initialLine = (String) props.get("raw_line_of_code");
+
+            if (initialLine != null && !initialLine.isEmpty()) {
+                Pattern defPattern = Pattern.compile("^\\s*def\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*\\(([^)]*)\\)\\s*\\{");
+                Matcher mDef = defPattern.matcher(initialLine);
+                if (mDef.find()) {
+                    props.put("descriptive_type", "COMPLEX_DEFINITION");
+                    props.put("def_name", mDef.group(1));
+                    props.put("def_params", mDef.group(2).trim());
+                    props.put("display_name", "Definition start: " + mDef.group(1) + "(" + mDef.group(2).trim() + ")");
+                    System.out.println("Regex Match for Definition Found: true");
+                }
             }
         }
 
@@ -295,7 +351,6 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
         }
 
         // Detect constants statements
-
         if (nodeType.toLowerCase().contains("constdeclarationstatement")) {
             Pattern constDecl = Pattern
                     .compile("\\bconst\\s+([a-zA-Z0-9\\[\\]]+)\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*=\\s*([^;]+);");
@@ -311,22 +366,37 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
             }
         }
 
+        // Detect assignment that involves a measure (e.g., c[0] = measure q[0];)
         // Detect index assigment statements
-        Pattern assignment = Pattern.compile("([a-zA-Z_][0-9a-zA-Z_]*)\\[(\\d+)\\]\\s*=\\s*([^;]+);");
-        Matcher mAssign = assignment.matcher(code);
-        if (mAssign.find()) {
-            props.put("descriptive_type", "INDEX_ASSIGNMENT");
-            props.put("assigned_array", mAssign.group(1));
-            props.put("assigned_index", mAssign.group(2));
-            props.put("assigned_value", mAssign.group(3));
-            props.put("display_name", "Assignment: " + mAssign.group(1)
-                    + "[" + mAssign.group(2)
-                    + "] = " + mAssign.group(3));
+        if (nodeType.toLowerCase().contains("assignmentstatement")) {
+            Pattern measureAssignment = Pattern.compile(
+                    "([a-zA-Z_][0-9a-zA-Z_]*)\\[(\\d+)\\]\\s*=\\s*measure\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\[(\\d+)\\]\\s*;");
+            Matcher mMeasureAssignment = measureAssignment.matcher(code);
+            Pattern assignment = Pattern.compile("([a-zA-Z_][0-9a-zA-Z_]*)\\[(\\d+)\\]\\s*=\\s*([^;]+);");
+            Matcher mAssign = assignment.matcher(code);
+            if (mMeasureAssignment.find()) {
+                props.put("descriptive_type", "MEASURE_CALL");
+                props.put("measured_qubit", mMeasureAssignment.group(3));
+                props.put("measured_qubit_index", mMeasureAssignment.group(4));
+                props.put("destination_bit", mMeasureAssignment.group(1));
+                props.put("destination_bit_index", mMeasureAssignment.group(2));
+                props.put("display_name",
+                        "Measure: " + mMeasureAssignment.group(3) + "[" + mMeasureAssignment.group(4) + "] -> "
+                                + mMeasureAssignment.group(1) + "[" + mMeasureAssignment.group(2) + "]");
+            } else if (mAssign.find()) {
+                props.put("descriptive_type", "INDEX_ASSIGNMENT");
+                props.put("assigned_array", mAssign.group(1));
+                props.put("assigned_index", mAssign.group(2));
+                props.put("assigned_value", mAssign.group(3));
+                props.put("display_name", "Assignment: " + mAssign.group(1)
+                        + "[" + mAssign.group(2)
+                        + "] = " + mAssign.group(3));
+            }
         }
 
         // Detect classical var statements
         Pattern declSimple = Pattern
-                .compile("\\b(int|float\\[\\d+\\]|bool|bit|qubit)\\s+([a-zA-Z_][0-9a-zA-Z_]*)(\\s*=\\s*([^;]+))?;");
+                .compile("\\b(int|float\\[\\d+\\]|bool)\\s+([a-zA-Z_][0-9a-zA-Z_]*)(\\s*=\\s*([^;]+))?;");
         Matcher mDeclSimple = declSimple.matcher(code);
         if (mDeclSimple.find() && !props.containsKey("descriptive_type")) {
             props.put("descriptive_type", "CLASSICAL_DECLARATION");
@@ -341,18 +411,6 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
                 props.put("display_name", "Declaration: " + mDeclSimple.group(2)
                         + " of type " + mDeclSimple.group(1));
             }
-        }
-
-        // Detect complex gates statements
-        Pattern gateDef = Pattern.compile("\\bgate\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\(([^)]*)\\)\\s*\\{");
-        Matcher mGateDef = gateDef.matcher(code);
-        if (mGateDef.find()) {
-            props.put("descriptive_type", "GATE_DEFINITION");
-            props.put("gate_def_name", mGateDef.group(1));
-            props.put("gate_def_params", mGateDef.group(2).trim());
-            props.put("display_name", "Gate definition: "
-                    + mGateDef.group(1) + "("
-                    + mGateDef.group(2).trim() + ")");
         }
 
         // Detect array statements
@@ -442,7 +500,7 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
         for (int i = 0; i < node.getChildCount(); i++) {
             var child = node.getChild(i);
             AstNode childNode = child.accept(this);
-            if (childNode != null) {
+            if (childNode != null && !current.getChildren().contains(childNode)) {
                 current.getChildren().add(childNode);
             }
         }
@@ -477,6 +535,13 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
                 .labels(new ArrayList<>(List.of("AST_NODE", "QASM_AST", "TERMINAL")))
                 .properties(props)
                 .build();
+
+        props.replaceAll((key, value) -> {
+            if (value instanceof String) {
+                return ((String) value).replace("\"", "'").trim();
+            }
+            return value;
+        });
 
         return terminalNode;
     }
