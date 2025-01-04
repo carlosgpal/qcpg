@@ -20,6 +20,7 @@ public class QasmCfgPdgBuilder {
     private static final Set<String> ALLOWED_LABELS = new HashSet<>(Arrays.asList(
             "ARRAY_DECLARATION",
             "GATE_DEFINITION",
+            "COMPLEX_DEFINITION",
             "INDEX_ASSIGNMENT",
             "CONST_DECLARATION",
             "FOR_LOOP",
@@ -153,7 +154,7 @@ public class QasmCfgPdgBuilder {
         // Create data dependency edges for variables used in statements.
         for (AstNode n : filtered) {
             String descriptiveType = (String) n.getProperties().get("descriptive_type");
-        
+
             if ("CONST_DECLARATION".equals(descriptiveType)) {
                 String constName = (String) n.getProperties().get("const_name");
                 if (constName != null && lastDef.containsKey(constName)) {
