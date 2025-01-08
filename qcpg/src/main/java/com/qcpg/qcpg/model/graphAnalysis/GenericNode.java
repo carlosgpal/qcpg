@@ -17,8 +17,8 @@ import org.springframework.data.neo4j.core.schema.Property;
 public class GenericNode {
     @Id
     private Long id;
-    @Property("fullName")
-    private String fullName;
+    @Property("name")
+    private String name;
     @Property("file")
     private String file;
     @Property("code")

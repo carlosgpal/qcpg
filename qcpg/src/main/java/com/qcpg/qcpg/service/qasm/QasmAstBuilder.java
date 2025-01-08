@@ -518,6 +518,7 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
         Map<String, Object> props = new HashMap<>();
         props.put("text", node.getText());
         props.put("token_type", node.getSymbol().getType());
+        props.put("file", this.currentFile);
 
         int lineNumber = node.getSymbol().getLine();
         props.put("line_of_code", lineNumber);
