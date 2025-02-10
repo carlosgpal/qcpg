@@ -28,7 +28,7 @@ public class QiskitToQasmConverter {
      */
     public List<MultipartFile> convertPyFileToQasmFiles(MultipartFile pyFile) throws Exception {
         // Create a temporary file for the uploaded Python file.
-        File tempPy = File.createTempFile("qiskit_user_", ".py");
+        File tempPy = File.createTempFile("./temp/qiskit_", ".py");
         pyFile.transferTo(tempPy);
 
         // Locate the Python script for extracting QASM.

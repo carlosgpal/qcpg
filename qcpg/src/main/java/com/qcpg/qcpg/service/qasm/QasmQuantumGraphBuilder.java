@@ -128,21 +128,39 @@ public class QasmQuantumGraphBuilder {
             Map<String, NodeBase> qubitNodes, Map<String, NodeBase> bitNodes, AstNode astNode) {
         String measuredQubit = Optional.ofNullable((String) astNode.getProperties().get("measured_qubit")).orElse("");
         String measuredQubitIndex = Optional.ofNullable((String) astNode.getProperties().get("measured_qubit_index"))
-                .orElse("0");
+                .orElse("");
         String destinationBit = Optional.ofNullable((String) astNode.getProperties().get("destination_bit")).orElse("");
         String destinationBitIndex = Optional.ofNullable((String) astNode.getProperties().get("destination_bit_index"))
-                .orElse("0");
-
-        String measuredQubitKey = measuredQubit + "[" + measuredQubitIndex + "]";
-        String destinationBitKey = destinationBit + "[" + destinationBitIndex + "]";
-
-        if (qubitNodes.containsKey(measuredQubitKey) && bitNodes.containsKey(destinationBitKey)) {
+                .orElse("");
+        if (measuredQubitIndex.isEmpty() && destinationBitIndex.isEmpty()) {
+            List<String> qubitsKeys = new ArrayList<>();
+            for (String key : qubitNodes.keySet())
+                if (key.startsWith(measuredQubit + "["))
+                    qubitsKeys.add(key);
+            qubitsKeys.sort(Comparator.comparingInt(this::extractIndex));
+            List<String> bitsKeys = new ArrayList<>();
+            for (String key : bitNodes.keySet())
+                if (key.startsWith(destinationBit + "["))
+                    bitsKeys.add(key);
+            bitsKeys.sort(Comparator.comparingInt(this::extractIndex));
+            int pairs = Math.min(qubitsKeys.size(), bitsKeys.size());
             NodeBase measureNode = createNode("QUANTUM_MEASURE", "Measure", astNode);
             quantumNodes.add(measureNode);
-
-            quantumEdges.add(createEdge(measureNode, qubitNodes.get(measuredQubitKey), "MEASUREMENT_SOURCE"));
-            quantumEdges.add(createEdge(measureNode, bitNodes.get(destinationBitKey), "MEASUREMENT_RESULT"));
             createReferenceEdge(quantumEdges, measureNode, astNode);
+            for (int i = 0; i < pairs; i++) {
+                quantumEdges.add(createEdge(measureNode, qubitNodes.get(qubitsKeys.get(i)), "MEASUREMENT_SOURCE"));
+                quantumEdges.add(createEdge(measureNode, bitNodes.get(bitsKeys.get(i)), "MEASUREMENT_RESULT"));
+            }
+        } else {
+            String measuredQubitKey = measuredQubit + "[" + measuredQubitIndex + "]";
+            String destinationBitKey = destinationBit + "[" + destinationBitIndex + "]";
+            if (qubitNodes.containsKey(measuredQubitKey) && bitNodes.containsKey(destinationBitKey)) {
+                NodeBase measureNode = createNode("QUANTUM_MEASURE", "Measure", astNode);
+                quantumNodes.add(measureNode);
+                quantumEdges.add(createEdge(measureNode, qubitNodes.get(measuredQubitKey), "MEASUREMENT_SOURCE"));
+                quantumEdges.add(createEdge(measureNode, bitNodes.get(destinationBitKey), "MEASUREMENT_RESULT"));
+                createReferenceEdge(quantumEdges, measureNode, astNode);
+            }
         }
     }
 
@@ -267,5 +285,14 @@ public class QasmQuantumGraphBuilder {
             edges.add(createEdge(lastNode, currentNode, "EXECUTION_ORDER"));
         }
         return currentNode;
+    }
+
+    private int extractIndex(String key) {
+        int start = key.indexOf('[');
+        int end = key.indexOf(']');
+        if (start >= 0 && end > start) {
+            return Integer.parseInt(key.substring(start + 1, end));
+        }
+        return -1;
     }
 }

@@ -179,6 +179,7 @@ public class QasmIntegrationService {
         for (MultipartFile file : files) {
             if (!file.isEmpty()) {
                 String qasmContent = new String(file.getBytes());
+                @SuppressWarnings("null")
                 String safeFilename = file.getOriginalFilename().replaceAll("[^a-zA-Z0-9-_\\.]", "_");
                 String qasmFilePath = baseDir + folderName + "/" + safeFilename;
                 try (FileWriter fw = new FileWriter(qasmFilePath)) {
@@ -199,20 +200,17 @@ public class QasmIntegrationService {
             }
         }
 
-        // Asignar IDs únicos a los nodos
         long startId = globalIdCounter;
         for (NodeBase node : allNodes) {
             node.setId(startId++);
         }
         globalIdCounter = startId;
 
-        // Exportar nodos y aristas a CSV
         String nodesFile = baseDir + folderName + "/nodes.csv";
         String edgesFile = baseDir + folderName + "/edges.csv";
 
         exportService.exportCpgToCsv(allNodes, allEdges, nodesFile, edgesFile);
 
-        // Cargar los datos en Neo4j
         String folderPath = "file:///" + folderName + "/";
         String nodesFilePath = folderPath + "nodes.csv";
         String edgesFilePath = folderPath + "edges.csv";
@@ -225,13 +223,11 @@ public class QasmIntegrationService {
     private void processSingleQasmFile(String qasmCode, String filename, List<NodeBase> allNodes,
             List<EdgeBase> allEdges) throws Exception {
         try {
-            // Parse the QASM code and construct the AST.
             var programCtx = parsingService.parseContent(qasmCode);
             List<String> codeLines = Arrays.asList(qasmCode.split("\n"));
             QasmAstBuilder astBuilder = new QasmAstBuilder();
             AstGraph ast = astBuilder.build(programCtx, filename, codeLines);
 
-            // Add AST nodes and edges.
             allNodes.addAll(ast.getAllNodes());
             for (AstNode n : ast.getAllNodes()) {
                 for (AstNode c : n.getChildren()) {
@@ -241,7 +237,6 @@ public class QasmIntegrationService {
                 }
             }
 
-            // Add CFG edges and nodes.
             List<EdgeBase> cfgEdges = cpgPdgBuilder.buildCfgEdges(ast.getRoot(), filename);
             Set<NodeBase> cfgNodes = new HashSet<>();
             for (EdgeBase e : cfgEdges) {
@@ -251,7 +246,6 @@ public class QasmIntegrationService {
             allNodes.addAll(cfgNodes);
             allEdges.addAll(cfgEdges);
 
-            // Add PDG edges and nodes.
             List<AstNode> allAstNodes = ast.getAllNodes();
             List<EdgeBase> pdgEdges = cpgPdgBuilder.buildPdgEdges(allAstNodes);
             Set<NodeBase> pdgNodes = new HashSet<>();
@@ -262,7 +256,6 @@ public class QasmIntegrationService {
             allNodes.addAll(pdgNodes);
             allEdges.addAll(pdgEdges);
 
-            // Add quantum-specific nodes and edges.
             QuantumGraph qResult = quantumBuilder.buildQuantumGraph(codeLines, ast.getAllNodes());
             allNodes.addAll(qResult.getQuantumNodes());
             allEdges.addAll(qResult.getQuantumEdges());

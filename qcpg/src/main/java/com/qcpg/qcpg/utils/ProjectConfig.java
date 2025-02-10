@@ -49,9 +49,9 @@ public class ProjectConfig {
     public WebMvcConfigurer corsConfigurer() {
         return new WebMvcConfigurer() {
             @Override
-            public void addCorsMappings(CorsRegistry registry) {
+            public void addCorsMappings(@SuppressWarnings("null") CorsRegistry registry) {
                 registry.addMapping("/**") // Apply to all endpoints
-                        .allowedOrigins("http://localhost:4200") // Allow frontend origin
+                        .allowedOrigins("http://localhost:3000") // Allow frontend origin
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS") // Specify allowed methods
                         .allowedHeaders("*") // Allow all headers
                         .allowCredentials(true); // Enable cookies or authorization headers

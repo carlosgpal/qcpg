@@ -1,21 +1,21 @@
 package com.qcpg.qcpg.service.graphAnalysis;
 
-import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qcpg.qcpg.dto.EntanglementPatternDTO;
 import com.qcpg.qcpg.dto.graphAnalysis.*;
-import com.qcpg.qcpg.model.graphAnalysis.*;
 import com.qcpg.qcpg.repository.graphAnalysis.*;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class Neo4jService {
@@ -23,114 +23,7 @@ public class Neo4jService {
     @Autowired
     private GraphAnalysisRepository nodeRepository;
 
-    @Autowired
-    private ModelMapper modelMapper;
-
-    public GenericGraphDTO getGraph() {
-        List<GenericNode> allNodes = new ArrayList<>();
-        List<GenericRelationship> allEdges = new ArrayList<>();
-
-        List<GenericNode> astNodes = nodeRepository.getAstNodes();
-        List<Long> astNodeIds = astNodes.stream().map(GenericNode::getId).collect(Collectors.toList());
-        allNodes.addAll(astNodes);
-        allEdges.addAll(nodeRepository.getAstRelationships(astNodeIds));
-
-        List<GenericNode> cfgNodes = nodeRepository.getCfgNodes();
-        List<Long> cfgNodeIds = cfgNodes.stream().map(GenericNode::getId).collect(Collectors.toList());
-        allNodes.addAll(cfgNodes);
-        allEdges.addAll(nodeRepository.getCfgRelationships(cfgNodeIds));
-
-        List<GenericNode> pdgNodes = nodeRepository.getPdgNodes();
-        List<Long> pdgNodeIds = pdgNodes.stream().map(GenericNode::getId).collect(Collectors.toList());
-        allNodes.addAll(pdgNodes);
-        allEdges.addAll(nodeRepository.getPdgRelationships(pdgNodeIds));
-
-        List<GenericNodeDTO> nodeDTOs = allNodes.stream()
-                .distinct()
-                .map(node -> modelMapper.map(node, GenericNodeDTO.class))
-                .collect(Collectors.toList());
-
-        List<GenericRelationshipDTO> edgeDTOs = allEdges.stream()
-                .distinct()
-                .map(edge -> modelMapper.map(edge, GenericRelationshipDTO.class))
-                .collect(Collectors.toList());
-
-        edgeDTOs.forEach(edgeDTO -> {
-            edgeDTO.setSource(edgeDTO.getSource().toString());
-            edgeDTO.setTarget(edgeDTO.getTarget().toString());
-        });
-
-        return new GenericGraphDTO(nodeDTOs, edgeDTOs, "entireGraph");
-    }
-
-    public GenericGraphDTO getAst() {
-        List<GenericNode> nodes = nodeRepository.getAstNodes();
-        List<Long> nodeIds = nodes.stream()
-                .map(GenericNode::getId)
-                .collect(Collectors.toList());
-        List<GenericRelationship> edges = nodeRepository.getAstRelationships(nodeIds);
-
-        List<GenericNodeDTO> nodeDTOs = nodes.stream()
-                .map(node -> modelMapper.map(node, GenericNodeDTO.class))
-                .collect(Collectors.toList());
-
-        List<GenericRelationshipDTO> edgeDTOs = edges.stream()
-                .map(edge -> modelMapper.map(edge, GenericRelationshipDTO.class))
-                .collect(Collectors.toList());
-
-        edgeDTOs.forEach(edgeDTO -> {
-            edgeDTO.setSource(edgeDTO.getSource().toString());
-            edgeDTO.setTarget(edgeDTO.getTarget().toString());
-        });
-
-        return new GenericGraphDTO(nodeDTOs, edgeDTOs, "ast");
-    }
-
-    public GenericGraphDTO getCfg() {
-        List<GenericNode> nodes = nodeRepository.getCfgNodes();
-        List<Long> nodeIds = nodes.stream()
-                .map(GenericNode::getId)
-                .collect(Collectors.toList());
-        List<GenericRelationship> edges = nodeRepository.getCfgRelationships(nodeIds);
-
-        List<GenericNodeDTO> nodeDTOs = nodes.stream()
-                .map(node -> modelMapper.map(node, GenericNodeDTO.class))
-                .collect(Collectors.toList());
-
-        List<GenericRelationshipDTO> edgeDTOs = edges.stream()
-                .map(edge -> modelMapper.map(edge, GenericRelationshipDTO.class))
-                .collect(Collectors.toList());
-
-        edgeDTOs.forEach(edgeDTO -> {
-            edgeDTO.setSource(edgeDTO.getSource().toString());
-            edgeDTO.setTarget(edgeDTO.getTarget().toString());
-        });
-
-        return new GenericGraphDTO(nodeDTOs, edgeDTOs, "cfg");
-    }
-
-    public GenericGraphDTO getPdg() {
-        List<GenericNode> nodes = nodeRepository.getPdgNodes();
-        List<Long> nodeIds = nodes.stream()
-                .map(GenericNode::getId)
-                .collect(Collectors.toList());
-        List<GenericRelationship> edges = nodeRepository.getPdgRelationships(nodeIds);
-
-        List<GenericNodeDTO> nodeDTOs = nodes.stream()
-                .map(node -> modelMapper.map(node, GenericNodeDTO.class))
-                .collect(Collectors.toList());
-
-        List<GenericRelationshipDTO> edgeDTOs = edges.stream()
-                .map(edge -> modelMapper.map(edge, GenericRelationshipDTO.class))
-                .collect(Collectors.toList());
-
-        edgeDTOs.forEach(edgeDTO -> {
-            edgeDTO.setSource(edgeDTO.getSource().toString());
-            edgeDTO.setTarget(edgeDTO.getTarget().toString());
-        });
-
-        return new GenericGraphDTO(nodeDTOs, edgeDTOs, "pdg");
-    }
+    private static final String PYTHON_INTERPRETER = "python";
 
     public List<MetricsByFileDTO> getAllMetrics() {
         List<String> files = nodeRepository.getDistinctFiles();
@@ -330,5 +223,53 @@ public class Neo4jService {
         }
 
         return result;
+    }
+
+   public MultipartFile generateDashboardExcel(List<?> dataList) throws Exception {
+        File tempJson = File.createTempFile("dashboard_data_", ".json");
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.writeValue(tempJson, dataList);
+
+        ClassPathResource cpr = new ClassPathResource("pythonCode/create_excel_dashboard.py");
+        File scriptFile = cpr.getFile();
+
+        File outXlsx = File.createTempFile("dashboard_out_", ".xlsx");
+
+        ProcessBuilder pb = new ProcessBuilder(
+                PYTHON_INTERPRETER,
+                scriptFile.getAbsolutePath(),
+                tempJson.getAbsolutePath(), 
+                outXlsx.getAbsolutePath() 
+        );
+        pb.redirectErrorStream(true);
+
+        Process process = pb.start();
+
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                System.out.println("PYTHON-OUTPUT: " + line);
+            }
+        }
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new RuntimeException("Python script exited with code " + exitCode);
+        }
+
+        try (FileInputStream fis = new FileInputStream(outXlsx)) {
+            byte[] bytes = fis.readAllBytes();
+            String fileName = "dashboard.xlsx";
+
+            return new MockMultipartFile(
+                    "file",
+                    fileName,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    bytes
+            );
+        } finally {
+            tempJson.delete();
+            outXlsx.delete();
+        }
     }
 }

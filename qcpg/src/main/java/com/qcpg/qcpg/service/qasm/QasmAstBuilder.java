@@ -164,6 +164,8 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
         if (nodeType.toLowerCase().contains("quantumdeclarationstatement")) {
             Pattern qubitDeclWithSize = Pattern.compile("\\bqubit\\[(\\d+)\\]\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*;");
             Matcher mQubitWithSize = qubitDeclWithSize.matcher(code);
+            Pattern qubitDeclNoSize = Pattern.compile("\\bqubit\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*;");
+            Matcher mQubitNoSize = qubitDeclNoSize.matcher(code);
 
             if (mQubitWithSize.find()) {
                 props.put("descriptive_type", "QUBIT_DECLARATION");
@@ -171,16 +173,11 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
                 props.put("qubit_name", mQubitWithSize.group(2));
                 props.put("display_name",
                         "Qubit declaration: " + mQubitWithSize.group(2) + "[" + mQubitWithSize.group(1) + "]");
-            } else {
-                Pattern qubitDeclNoSize = Pattern.compile("\\bqubit\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*;");
-                Matcher mQubitNoSize = qubitDeclNoSize.matcher(code);
-
-                if (mQubitNoSize.find()) {
-                    props.put("descriptive_type", "QUBIT_DECLARATION");
-                    props.put("qubit_size", "1");
-                    props.put("qubit_name", mQubitNoSize.group(1));
-                    props.put("display_name", "Qubit declaration: " + mQubitNoSize.group(1) + "[1]");
-                }
+            } else if (mQubitNoSize.find()) {
+                props.put("descriptive_type", "QUBIT_DECLARATION");
+                props.put("qubit_size", "1");
+                props.put("qubit_name", mQubitNoSize.group(1));
+                props.put("display_name", "Qubit declaration: " + mQubitNoSize.group(1) + "[1]");
             }
         }
 
@@ -188,6 +185,7 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
         if (nodeType.toLowerCase().contains("classicaldeclarationstatement")) {
             Pattern bitDecl = Pattern.compile("\\bbit\\[(\\d+)\\]\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*;");
             Matcher mBit = bitDecl.matcher(code);
+
             if (mBit.find()) {
                 props.put("descriptive_type", "BIT_DECLARATION");
                 props.put("bit_size", mBit.group(1));
@@ -196,11 +194,33 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
             }
         }
 
+        // Detect old qasm2.0 declarations
+        if (nodeType.toLowerCase().contains("oldstyledeclarationstatement")) {
+            Pattern oldCreg = Pattern.compile("\\bcreg\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\[(\\d+)\\]\\s*;");
+            Matcher mOldCreg = oldCreg.matcher(code);
+            Pattern oldQreg = Pattern.compile("\\bqreg\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\[(\\d+)\\]\\s*;");
+            Matcher mOldQreg = oldQreg.matcher(code);
+            if (mOldQreg.find()) {
+                props.put("descriptive_type", "QUBIT_DECLARATION");
+                props.put("qubit_size", mOldQreg.group(2));
+                props.put("qubit_name", mOldQreg.group(1));
+                props.put("display_name",
+                        "Qubit declaration: " + mOldQreg.group(1) + "[" + mOldQreg.group(2) + "]");
+            } else if (mOldCreg.find()) {
+                props.put("descriptive_type", "BIT_DECLARATION");
+                props.put("bit_size", mOldCreg.group(2));
+                props.put("bit_name", mOldCreg.group(1));
+                props.put("display_name",
+                        "Bit declaration: " + mOldCreg.group(1) + "[" + mOldCreg.group(2) + "]");
+            }
+        }
+
         // Detect gate call statements
         if (nodeType.toLowerCase().contains("gatecallstatement")) {
             Pattern gateCallIndexed = Pattern
                     .compile("\\b([a-zA-Z_][0-9a-zA-Z_]*)\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\[(\\d+)\\]\\s*;");
             Matcher mGateIndexed = gateCallIndexed.matcher(code);
+
             if (mGateIndexed.find()) {
                 props.put("descriptive_type", "GATE_CALL");
                 props.put("gate_name", mGateIndexed.group(1));
@@ -213,26 +233,52 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
         }
 
         if (nodeType.toLowerCase().contains("gatecallstatement")) {
-            Pattern gateCall = Pattern.compile(
-                    "\\b([a-zA-Z_][0-9a-zA-Z_]*)\\s*(\\([^)]*\\))?\\s+([^;]+);");
-            Matcher mGateCall = gateCall.matcher(code);
-            if (mGateCall.find()) {
-                String gateName = mGateCall.group(1);
-                String parameters = Optional.ofNullable(mGateCall.group(2)).orElse("").trim();
-                String operands = mGateCall.group(3).trim();
-
-                if (operands.isEmpty()) {
-                    throw new IllegalArgumentException("Gate call detected with empty operands: " + code);
+            if (code.trim().startsWith("if")) {
+                Pattern inlineIfPattern = Pattern.compile("^if\\s*\\(([^)]*)\\)\\s*(.+);$");
+                Matcher mInlineIf = inlineIfPattern.matcher(code.trim());
+                if (mInlineIf.find()) {
+                    String condition = mInlineIf.group(1).trim();
+                    String gateCallStr = mInlineIf.group(2).trim();
+                    Pattern innerGateCall = Pattern.compile("^([a-zA-Z_][0-9a-zA-Z_]*)(\\s*(\\([^)]*\\))?)\\s+(.+)$");
+                    Matcher mInner = innerGateCall.matcher(gateCallStr);
+                    if (mInner.find()) {
+                        String gateName = mInner.group(1);
+                        // String gateParams = mInner.group(2) != null ? mInner.group(2).trim() : "";
+                        String operands = mInner.group(4).trim();
+                        props.put("descriptive_type", "GATE_CALL");
+                        props.put("gate_name", gateName);
+                        props.put("parameters", "(" + condition + ")");
+                        props.put("operands", operands);
+                        props.put("display_name", "Gate call: " + gateName + " (" + condition + ") on " + operands);
+                    } else {
+                        System.err.println("Warning: Unable to match inner gate call pattern in code: " + gateCallStr);
+                    }
+                } else {
+                    System.err.println("Warning: Unable to match inline if pattern in code: " + code);
                 }
-
-                props.put("descriptive_type", "GATE_CALL");
-                props.put("gate_name", gateName);
-                props.put("parameters", parameters);
-                props.put("operands", operands);
-                props.put("display_name", "Gate call: " + gateName + " " + parameters + " on " + operands);
             } else {
-                // Loguear si no se detecta un patrón válido
-                System.err.println("Warning: Unable to match gate call pattern in code: " + code);
+                Pattern gateCall = Pattern.compile(
+                        "\\b([a-zA-Z_][0-9a-zA-Z_]*)\\s*(\\([^)]*\\))?\\s+([^;]+);");
+                Matcher mGateCall = gateCall.matcher(code);
+
+                if (mGateCall.find()) {
+                    String gateName = mGateCall.group(1);
+                    String parameters = Optional.ofNullable(mGateCall.group(2)).orElse("").trim();
+                    String operands = mGateCall.group(3).trim();
+
+                    if (operands.isEmpty()) {
+                        throw new IllegalArgumentException("Gate call detected with empty operands: " + code);
+                    }
+
+                    props.put("descriptive_type", "GATE_CALL");
+                    props.put("gate_name", gateName);
+                    props.put("parameters", parameters);
+                    props.put("operands", operands);
+                    props.put("display_name", "Gate call: " + gateName + " " + parameters + " on " + operands);
+                } else {
+                    // Loguear si no se detecta un patrón válido
+                    System.err.println("Warning: Unable to match gate call pattern in code: " + code);
+                }
             }
         }
 
@@ -287,6 +333,9 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
             Pattern measure = Pattern.compile(
                     "\\bmeasure\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\[(\\d+)\\]\\s*->\\s*([a-zA-Z_][0-9a-zA-Z_]*)\\[(\\d+)\\]\\s*;");
             Matcher mMeasure = measure.matcher(code);
+            Pattern measureNoIndex = Pattern
+                    .compile("\\bmeasure\\s+([a-zA-Z_][0-9a-zA-Z_]*)\\s*->\\s*([a-zA-Z_][0-9a-zA-Z_]*)\\s*;");
+            Matcher mMeasureNoIndex = measureNoIndex.matcher(code);
             if (mMeasure.find()) {
                 props.put("descriptive_type", "MEASURE_CALL");
                 props.put("measured_qubit", mMeasure.group(1));
@@ -295,6 +344,14 @@ public class QasmAstBuilder extends qasm3ParserBaseVisitor<AstNode> {
                 props.put("destination_bit_index", mMeasure.group(4));
                 props.put("display_name", "Measure: " + mMeasure.group(1) + "[" + mMeasure.group(2) + "] -> "
                         + mMeasure.group(3) + "[" + mMeasure.group(4) + "]");
+            } else if (mMeasureNoIndex.find()) {
+                props.put("descriptive_type", "MEASURE_CALL");
+                props.put("measured_qubit", mMeasureNoIndex.group(1));
+                props.put("measured_qubit_index", "");
+                props.put("destination_bit", mMeasureNoIndex.group(2));
+                props.put("destination_bit_index", "");
+                props.put("display_name",
+                        "Measure: " + mMeasureNoIndex.group(1) + " -> " + mMeasureNoIndex.group(2));
             }
         }
 

@@ -8,7 +8,7 @@ import java.util.*;
 @AllArgsConstructor
 public class OpNodeDTO {
     private Long opId;
-    private List<String> labels;      // Ej. ["QUANTUM_GATE","QUANTUM_GATE_H"]
-    private List<Long> qubitIds;      // IDs de qubits afectados
+    private List<String> labels;
+    private List<Long> qubitIds;
 }
 
