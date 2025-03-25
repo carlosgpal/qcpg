@@ -86,7 +86,7 @@ function Home() {
 
   return (
     <div className="home-container">
-      <h1>Quantum Files Analyzer</h1>
+      <h1>Quantum Circuits Analyzer</h1>
 
       {/* Toggle QASM / Qiskit */}
       <div className="switch-container">

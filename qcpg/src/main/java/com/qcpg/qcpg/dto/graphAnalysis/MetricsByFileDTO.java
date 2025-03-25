@@ -19,7 +19,7 @@ public class MetricsByFileDTO {
     private Long width;
     private Long depth;
 
-    private Double maxDens;
+    private Long maxDens;
     private Double avgDens;
 
     private Long noPx;
@@ -35,7 +35,6 @@ public class MetricsByFileDTO {
     private Long noSWAP;
     private Long noCNOT;
     private Double pQInCNOT;
-    private Double avgCNOT;
     private Long maxCNOT;
     private Long noToff;
     private Double pQInToff;
@@ -46,7 +45,6 @@ public class MetricsByFileDTO {
     private Double pSGates;
 
     private Long noOr;
-    private Long noCOr;
     private Double pQInOr;
     private Double pQInCOr;
     private Double avgOrD;

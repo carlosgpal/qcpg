@@ -25,6 +25,22 @@ public class Neo4jService {
 
     private static final String PYTHON_INTERPRETER = "python";
 
+    private static class OpData {
+        Long id;
+        Set<Long> qubits;
+        List<Long> successors = new ArrayList<>();
+        List<Long> predecessors = new ArrayList<>();
+        int inDegree = 0;
+        int layer = 0;
+
+        List<String> labels;
+
+        OpData(Long id, Set<Long> qubits) {
+            this.id = id;
+            this.qubits = qubits;
+        }
+    }
+
     public List<MetricsByFileDTO> getAllMetrics() {
         List<String> files = nodeRepository.getDistinctFiles();
         List<MetricsByFileDTO> result = new ArrayList<>();
@@ -33,12 +49,123 @@ public class Neo4jService {
                 continue;
 
             MetricsByFileDTO dto = new MetricsByFileDTO();
-
             dto.setWidth(nodeRepository.getWidth(f));
             dto.setDepth(nodeRepository.getDepth(f));
 
-            dto.setMaxDens(nodeRepository.getMaxDens(f));
-            dto.setAvgDens(nodeRepository.getAvgDens(f));
+            List<OperationProjection> opsRaw = nodeRepository.getOperations(f);
+            List<ExecEdgeDTOEx> edgesRaw = nodeRepository.getExecOrderEdges(f);
+
+            Map<Long, OpData> opMap = new HashMap<>();
+            for (OperationProjection op : opsRaw) {
+                Long opId = op.getOpId();
+                List<Long> qbList = op.getQubitIds();
+                Set<Long> qbSet = (qbList != null) ? new HashSet<>(qbList) : new HashSet<>();
+
+                OpData data = new OpData(opId, qbSet);
+                data.labels = op.getLabels();
+                opMap.put(opId, data);
+            }
+
+            for (ExecEdgeDTOEx edge : edgesRaw) {
+                Long sId = edge.getSourceId();
+                Long tId = edge.getTargetId();
+                if (opMap.containsKey(sId) && opMap.containsKey(tId)) {
+                    OpData source = opMap.get(sId);
+                    OpData target = opMap.get(tId);
+                    source.successors.add(tId);
+                    target.inDegree++;
+                    target.predecessors.add(sId);
+                }
+            }
+
+            Map<Long, Set<Long>> sameQubitMap = new HashMap<>();
+            List<OpData> allOps = new ArrayList<>(opMap.values());
+            for (OpData od : allOps) {
+                sameQubitMap.put(od.id, new HashSet<>());
+            }
+            for (int i = 0; i < allOps.size(); i++) {
+                for (int j = i + 1; j < allOps.size(); j++) {
+                    OpData a = allOps.get(i);
+                    OpData b = allOps.get(j);
+                    Set<Long> inter = new HashSet<>(a.qubits);
+                    inter.retainAll(b.qubits);
+                    if (!inter.isEmpty()) {
+                        sameQubitMap.get(a.id).add(b.id);
+                        sameQubitMap.get(b.id).add(a.id);
+                    }
+                }
+            }
+
+            List<Long> topoOrder = new ArrayList<>();
+            Map<Long, Integer> inDegreeCopy = new HashMap<>();
+            for (OpData op : opMap.values()) {
+                inDegreeCopy.put(op.id, op.inDegree);
+            }
+            Queue<Long> zeroIn = new LinkedList<>();
+            for (OpData op : opMap.values()) {
+                if (inDegreeCopy.get(op.id) == 0) {
+                    zeroIn.add(op.id);
+                }
+            }
+            while (!zeroIn.isEmpty()) {
+                Long currentId = zeroIn.poll();
+                topoOrder.add(currentId);
+                OpData currentOp = opMap.get(currentId);
+                for (Long succId : currentOp.successors) {
+                    inDegreeCopy.put(succId, inDegreeCopy.get(succId) - 1);
+                    if (inDegreeCopy.get(succId) == 0) {
+                        zeroIn.add(succId);
+                    }
+                }
+            }
+
+            Map<Long, Integer> indexInTopo = new HashMap<>();
+            for (int i = 0; i < topoOrder.size(); i++) {
+                indexInTopo.put(topoOrder.get(i), i);
+            }
+
+            for (Long opId : topoOrder) {
+                OpData op = opMap.get(opId);
+
+                int layerDep = 0;
+                for (Long pId : op.predecessors) {
+                    OpData pred = opMap.get(pId);
+                    Set<Long> inter = new HashSet<>(pred.qubits);
+                    inter.retainAll(op.qubits);
+                    if (!inter.isEmpty() || isMeasureOrBarrier(pred)) {
+                        layerDep = Math.max(layerDep, pred.layer);
+                    }
+                }
+                layerDep = (layerDep == 0) ? 1 : layerDep + 1;
+
+                int layerQub = 0;
+                for (Long x : sameQubitMap.get(opId)) {
+                    if (indexInTopo.get(x) < indexInTopo.get(opId)) {
+                        layerQub = Math.max(layerQub, opMap.get(x).layer);
+                    }
+                }
+                layerQub = (layerQub == 0) ? 1 : layerQub + 1;
+
+                op.layer = Math.max(layerDep, layerQub);
+            }
+
+            Map<Integer, List<OpData>> layers = new HashMap<>();
+            for (Long opId : topoOrder) {
+                OpData op = opMap.get(opId);
+                int candidate = op.layer;
+
+                while (layers.containsKey(candidate) && layers.get(candidate).size() >= dto.getWidth()) {
+                    candidate++;
+                }
+                op.layer = candidate;
+                layers.computeIfAbsent(candidate, k -> new ArrayList<>()).add(op);
+            }
+
+            int maxDens = layers.values().stream().mapToInt(List::size).max().orElse(0);
+            double avgDens = layers.values().stream().mapToInt(List::size).average().orElse(0.0);
+
+            dto.setMaxDens((long) maxDens);
+            dto.setAvgDens(avgDens);
 
             dto.setNoPx(nodeRepository.getNoPx(f));
             dto.setNoPy(nodeRepository.getNoPy(f));
@@ -53,7 +180,6 @@ public class Neo4jService {
             dto.setNoSWAP(nodeRepository.getNoSWAP(f));
             dto.setNoCNOT(nodeRepository.getNoCNOT(f));
             dto.setPQInCNOT(nodeRepository.getPQInCNOT(f));
-            dto.setAvgCNOT(nodeRepository.getAvgCNOT(f));
             dto.setMaxCNOT(nodeRepository.getMaxCNOT(f));
             dto.setNoToff(nodeRepository.getNoToff(f));
             dto.setPQInToff(nodeRepository.getPQInToff(f));
@@ -64,7 +190,6 @@ public class Neo4jService {
             dto.setPSGates(nodeRepository.getPSGates(f));
 
             dto.setNoOr(nodeRepository.getNoOr(f));
-            dto.setNoCOr(nodeRepository.getNoCOr(f));
             dto.setPQInOr(nodeRepository.getPQInOr(f));
             dto.setPQInCOr(nodeRepository.getPQInCOr(f));
             dto.setAvgOrD(nodeRepository.getAvgOrD(f));
@@ -75,10 +200,16 @@ public class Neo4jService {
             dto.setPQM(nodeRepository.getPQM(f));
 
             dto.setFile(f);
-
             result.add(dto);
         }
         return result;
+    }
+
+    private boolean isMeasureOrBarrier(OpData op) {
+        if (op.labels == null)
+            return false;
+        return op.labels.contains("QUANTUM_MEASURE")
+                || op.labels.contains("QUANTUM_GATE_BARRIER");
     }
 
     public List<PatternsByFileDTO> getAllPatterns() {
@@ -225,7 +356,7 @@ public class Neo4jService {
         return result;
     }
 
-   public MultipartFile generateDashboardExcel(List<?> dataList) throws Exception {
+    public MultipartFile generateDashboardExcel(List<?> dataList) throws Exception {
         File tempJson = File.createTempFile("dashboard_data_", ".json");
         ObjectMapper mapper = new ObjectMapper();
         mapper.writeValue(tempJson, dataList);
@@ -238,9 +369,8 @@ public class Neo4jService {
         ProcessBuilder pb = new ProcessBuilder(
                 PYTHON_INTERPRETER,
                 scriptFile.getAbsolutePath(),
-                tempJson.getAbsolutePath(), 
-                outXlsx.getAbsolutePath() 
-        );
+                tempJson.getAbsolutePath(),
+                outXlsx.getAbsolutePath());
         pb.redirectErrorStream(true);
 
         Process process = pb.start();
@@ -265,8 +395,7 @@ public class Neo4jService {
                     "file",
                     fileName,
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    bytes
-            );
+                    bytes);
         } finally {
             tempJson.delete();
             outXlsx.delete();

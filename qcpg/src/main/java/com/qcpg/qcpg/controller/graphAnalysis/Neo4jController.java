@@ -83,12 +83,10 @@ public class Neo4jController {
             item.put("noPz", m.getNoPz());
             item.put("noH", m.getNoH());
             item.put("noOtherSG", m.getNoOtherSG());
-            item.put("avgCNOT", m.getAvgCNOT());
             item.put("maxCNOT", m.getMaxCNOT());
             item.put("maxToff", m.getMaxToff());
             item.put("noCGates", m.getNoCGates());
             item.put("noOr", m.getNoOr());
-            item.put("noCOr", m.getNoCOr());
             item.put("avgOrD", m.getAvgOrD());
             item.put("maxOrD", m.getMaxOrD());
             item.put("noM", m.getNoM());
