@@ -46,10 +46,6 @@ public class MetricsByFileDTO {
 
     private Long noOr;
     private Double pQInOr;
-    private Double pQInCOr;
-    private Double avgOrD;
-    private Long maxOrD;
-    private Double pSGatesOr;
 
     private Long noM;
     private Double pQM;

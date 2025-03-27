@@ -22,4 +22,5 @@ public class PatternsByFileDTO {
     Map<Boolean, String> statePreparation;
     private boolean uniformSuperposition;
     List<Map<Integer, String>> creatingEntanglement;
+    List<String> knittingSubcircuits;
 }

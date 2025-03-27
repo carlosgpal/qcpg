@@ -191,10 +191,6 @@ public class Neo4jService {
 
             dto.setNoOr(nodeRepository.getNoOr(f));
             dto.setPQInOr(nodeRepository.getPQInOr(f));
-            dto.setPQInCOr(nodeRepository.getPQInCOr(f));
-            dto.setAvgOrD(nodeRepository.getAvgOrD(f));
-            dto.setMaxOrD(nodeRepository.getMaxOrD(f));
-            dto.setPSGatesOr(nodeRepository.getPSGatesOr(f));
 
             dto.setNoM(nodeRepository.getNoM(f));
             dto.setPQM(nodeRepository.getPQM(f));
@@ -245,11 +241,99 @@ public class Neo4jService {
             List<Map<Integer, String>> entList = detectCreatingEntanglement(f);
             dto.setCreatingEntanglement(entList);
 
+            List<String> knittingSubcircuits = detectKnittingSubcircuits(f);
+            dto.setKnittingSubcircuits(knittingSubcircuits);
+
             dto.setFile(f);
 
             result.add(dto);
         }
         return result;
+    }
+
+    private List<String> detectKnittingSubcircuits(String file) {
+        List<OperationProjection> opsRaw = nodeRepository.getOperationsForKnitting(file);
+
+        Map<Long, OpData> opMap = new HashMap<>();
+        for (OperationProjection op : opsRaw) {
+            Long opId = op.getOpId();
+            List<Long> qbList = op.getQubitIds();
+            Set<Long> qbSet = (qbList != null) ? new HashSet<>(qbList) : new HashSet<>();
+            opMap.put(opId, new OpData(opId, qbSet));
+        }
+
+        Map<Long, Set<Long>> qubitConnectivityGraph = new HashMap<>();
+        for (Long opId : opMap.keySet()) {
+            qubitConnectivityGraph.put(opId, new HashSet<>());
+        }
+
+        List<Long> opIds = new ArrayList<>(opMap.keySet());
+        for (int i = 0; i < opIds.size(); i++) {
+            for (int j = i + 1; j < opIds.size(); j++) {
+                Long aId = opIds.get(i);
+                Long bId = opIds.get(j);
+                Set<Long> qa = opMap.get(aId).qubits;
+                Set<Long> qb = opMap.get(bId).qubits;
+                Set<Long> inter = new HashSet<>(qa);
+                inter.retainAll(qb);
+                if (!inter.isEmpty()) {
+                    qubitConnectivityGraph.get(aId).add(bId);
+                    qubitConnectivityGraph.get(bId).add(aId);
+                }
+            }
+        }
+
+        Set<Long> visited = new HashSet<>();
+        List<Set<Long>> components = new ArrayList<>();
+        for (Long opId : qubitConnectivityGraph.keySet()) {
+            if (!visited.contains(opId)) {
+                Set<Long> comp = new HashSet<>();
+                dfsComponent(opId, qubitConnectivityGraph, visited, comp);
+                components.add(comp);
+            }
+        }
+
+        Map<Long, OperationProjection> opProjectionMap = new HashMap<>();
+        for (OperationProjection op : opsRaw) {
+            opProjectionMap.put(op.getOpId(), op);
+        }
+
+        List<String> subcircuits = new ArrayList<>();
+        int compIndex = 0;
+        for (Set<Long> comp : components) {
+            List<Long> compList = new ArrayList<>(comp);
+            Collections.sort(compList);
+            List<String> repList = new ArrayList<>();
+            for (Long opId : compList) {
+                OperationProjection opProj = opProjectionMap.get(opId);
+                if (opProj != null) {
+                    if (opProj.getNormalizedCodeLine() != null && !opProj.getNormalizedCodeLine().isEmpty()) {
+                        repList.add(opProj.getNormalizedCodeLine());
+                    } else if (opProj.getLineOfCode() != null) {
+                        repList.add("Line " + opProj.getLineOfCode());
+                    } else {
+                        repList.add("Node " + opId);
+                    }
+                } else {
+                    repList.add("Node " + opId);
+                }
+            }
+            String rep = "Subcircuit " + compIndex + ": " + repList.toString();
+            subcircuits.add(rep);
+            compIndex++;
+        }
+
+        return subcircuits;
+    }
+
+    private void dfsComponent(Long node, Map<Long, Set<Long>> graph, Set<Long> visited, Set<Long> component) {
+        visited.add(node);
+        component.add(node);
+        for (Long neighbor : graph.getOrDefault(node, Collections.emptySet())) {
+            if (!visited.contains(neighbor)) {
+                dfsComponent(neighbor, graph, visited, component);
+            }
+        }
     }
 
     private Double getPSposQ(String file, String gate) {

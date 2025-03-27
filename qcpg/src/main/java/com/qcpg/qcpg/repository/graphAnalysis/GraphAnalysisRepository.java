@@ -35,7 +35,6 @@ public interface GraphAnalysisRepository extends Neo4jRepository<GenericNode, Lo
       """)
   Long getDepth(String file);
 
-  // 1) Recuperar todas las operaciones relevantes y los qubits asociados
   @Query("""
       MATCH (op)
       WHERE (op:QUANTUM_GATE OR op:QUANTUM_MEASURE OR op:QUANTUM_RESET OR op:QUANTUM_BARRIER)
@@ -48,7 +47,26 @@ public interface GraphAnalysisRepository extends Neo4jRepository<GenericNode, Lo
       """)
   List<OperationProjection> getOperations(@Param("file") String file);
 
-  // 2) Recuperar las aristas de EXECUTION_ORDER entre dichas operaciones
+  @Query("""
+          MATCH (op)
+          WHERE (op:QUANTUM_GATE OR op:QUANTUM_MEASURE OR op:QUANTUM_RESET OR op:QUANTUM_BARRIER)
+            AND op.file = $file
+          OPTIONAL MATCH (op)-[:QUANTUM_OPERAND_0|:QUANTUM_OPERAND_1|:QUANTUM_OPERAND_2|:QUANTUM_OPERAND_3
+                           |:MEASUREMENT_SOURCE|:MEASUREMENT_RESULT]
+                       ->(qb:QUANTUM_BIT {file:$file})
+          OPTIONAL MATCH (parentAst)<-[:REFERENCE]-(op)
+          WHERE parentAst.file = $file AND parentAst.code_line IS NOT NULL
+          WITH op, collect(DISTINCT id(qb)) AS qubitIds,
+               parentAst.code_line AS codeLine,
+               parentAst.normalized_code_line AS normalizedCodeLine
+          RETURN id(op) AS opId,
+                 labels(op) AS labels,
+                 qubitIds AS qubitIds,
+                 codeLine AS lineOfCode,
+                 normalizedCodeLine AS normalizedCodeLine
+      """)
+  List<OperationProjection> getOperationsForKnitting(@Param("file") String file);
+
   @Query("""
       MATCH (src)-[r:EXECUTION_ORDER]->(dst)
       WHERE (src:QUANTUM_GATE OR src:QUANTUM_MEASURE OR src:QUANTUM_RESET)
@@ -258,56 +276,29 @@ public interface GraphAnalysisRepository extends Neo4jRepository<GenericNode, Lo
   Double getPSGates(String file);
 
   @Query("""
-      OPTIONAL MATCH (o:AST_NODE {file:$file})
-      WHERE o.descriptive_type IN ["COMPLEX_DEFINITION","GATE_DEFINITION"]
-        AND toLower(o.display_name) CONTAINS "oracle"
-      RETURN count(DISTINCT o)
+          OPTIONAL MATCH (g)
+          WHERE g.file = $file
+            AND any(label IN labels(g)
+                    WHERE label STARTS WITH 'QUANTUM_GATE_' AND toLower(label) CONTAINS 'oracle')
+          RETURN count(DISTINCT g) AS numOracles
       """)
   Long getNoOr(String file);
 
   @Query("""
-      OPTIONAL MATCH (o:AST_NODE {file:$file})
-      WHERE o.descriptive_type IN ["COMPLEX_DEFINITION","GATE_DEFINITION"]
-        AND toLower(o.display_name) CONTAINS "oracle"
-      OPTIONAL MATCH (o)-[:AST*]->(child:AST_NODE)
-             -[:QUANTUM_OPERAND_0|:QUANTUM_OPERAND_1|:QUANTUM_OPERAND_2|:QUANTUM_OPERAND_3]
-             ->(qb:QUANTUM_BIT {file:$file})
-      WITH collect(DISTINCT qb) AS qubitsInOr
-      OPTIONAL MATCH (allQ:QUANTUM_BIT {file:$file})
-      WITH qubitsInOr, collect(DISTINCT allQ) AS allQs
-      RETURN CASE WHEN size(allQs)=0 THEN 0.0
-                  ELSE (toFloat(size(qubitsInOr)) / size(allQs)) * 100.0
-             END
+          OPTIONAL MATCH (qb:QUANTUM_BIT {file:$file})
+          WITH collect(DISTINCT qb) AS allQubits
+          OPTIONAL MATCH (g)
+          WHERE g.file = $file
+            AND any(label IN labels(g)
+                    WHERE label STARTS WITH 'QUANTUM_GATE_' AND toLower(label) CONTAINS 'oracle')
+          OPTIONAL MATCH (g)-[:QUANTUM_OPERAND_0|:QUANTUM_OPERAND_1|:QUANTUM_OPERAND_2|:QUANTUM_OPERAND_3]->(affected:QUANTUM_BIT {file:$file})
+          WITH allQubits, collect(DISTINCT affected) AS affectedQubits
+          RETURN CASE
+               WHEN size(allQubits)=0 THEN 0.0
+               ELSE 100.0 * size(affectedQubits) / size(allQubits)
+               END AS percentage
       """)
   Double getPQInOr(String file);
-
-  @Query("""
-      OPTIONAL MATCH (o:AST_NODE {file:$file})
-      WHERE o.descriptive_type IN ["COMPLEX_DEFINITION","GATE_DEFINITION"]
-        AND toLower(o.display_name) CONTAINS "oracle"
-      OPTIONAL MATCH (o)-[:AST*]->(qDec:AST_NODE {descriptive_type:"QUBIT_DECLARATION"})
-      WITH o, sum(toInteger(qDec.qubit_size)) AS totalQbits
-      WHERE totalQbits >= 2
-      OPTIONAL MATCH (o)-[:AST*]->(child:AST_NODE)
-             -[:QUANTUM_OPERAND_0|:QUANTUM_OPERAND_1|:QUANTUM_OPERAND_2|:QUANTUM_OPERAND_3]
-             ->(qb:QUANTUM_BIT {file:$file})
-      WITH collect(DISTINCT qb) AS qubitsInCOr
-      OPTIONAL MATCH (allQ:QUANTUM_BIT {file:$file})
-      WITH qubitsInCOr, collect(DISTINCT allQ) AS allQs
-      RETURN CASE WHEN size(allQs)=0 THEN 0.0
-                  ELSE (toFloat(size(qubitsInCOr)) / size(allQs)) * 100.0
-             END
-      """)
-  Double getPQInCOr(String file);
-
-  @Query("RETURN 99.0")
-  Double getAvgOrD(String file);
-
-  @Query("RETURN 99.0")
-  Long getMaxOrD(String file);
-
-  @Query("RETURN 99.0")
-  Double getPSGatesOr(String file);
 
   @Query("OPTIONAL MATCH (m:QUANTUM_MEASURE) WHERE m.file = $file RETURN count(m)")
   Long getNoM(String file);

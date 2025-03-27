@@ -87,22 +87,16 @@ public class Neo4jController {
             item.put("maxToff", m.getMaxToff());
             item.put("noCGates", m.getNoCGates());
             item.put("noOr", m.getNoOr());
-            item.put("avgOrD", m.getAvgOrD());
-            item.put("maxOrD", m.getMaxOrD());
             item.put("noM", m.getNoM());
             item.put("tnoSG", m.getTNoSG());
             item.put("tnoCSQG", m.getTNoCSQG());
             item.put("psposQ", m.getPSposQ());
             item.put("pqinCNOT", m.getPQInCNOT());
             item.put("tnoP", m.getTNoP());
-            item.put("psgatesOr", m.getPSGatesOr());
             item.put("pqm", m.getPQM());
             item.put("pqinToff", m.getPQInToff());
             item.put("pqinOr", m.getPQInOr());
-            item.put("pqinCOr", m.getPQInCOr());
             item.put("psgates", m.getPSGates());
-            
-            
 
             PatternsByFileDTO pat = patternsMap.get(m.getFile());
             if (pat != null) {
