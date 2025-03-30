@@ -44,8 +44,9 @@ public class Neo4jController {
 
             MultipartFile excelFile = neo4jService.generateDashboardExcel(combinedData);
 
-            response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-            response.setHeader("Content-Disposition", "attachment; filename=\"analysis_dashboard.xlsx\"");
+            response.setContentType("application/zip");
+            response.setHeader("Content-Disposition", "attachment; filename=\"analysis_dashboard.zip\"");
+
             response.setStatus(HttpStatus.OK.value());
 
             response.getOutputStream().write(excelFile.getBytes());
@@ -65,7 +66,6 @@ public class Neo4jController {
         for (PatternsByFileDTO p : allPatterns) {
             patternsMap.put(p.getFile(), p);
         }
-
         List<Map<String, Object>> result = new ArrayList<>();
         for (MetricsByFileDTO m : allMetrics) {
             Map<String, Object> item = new HashMap<>();
@@ -101,7 +101,6 @@ public class Neo4jController {
             PatternsByFileDTO pat = patternsMap.get(m.getFile());
             if (pat != null) {
                 Map<String, Object> patternsSubmap = new HashMap<>();
-
                 if (pat.getStatePreparation() != null && !pat.getStatePreparation().isEmpty()) {
                     Boolean key = pat.getStatePreparation().keySet().iterator().next();
                     String val = pat.getStatePreparation().get(key);
@@ -109,9 +108,7 @@ public class Neo4jController {
                 } else {
                     patternsSubmap.put("statePrep", "None");
                 }
-
                 patternsSubmap.put("uniform", pat.isUniformSuperposition());
-
                 if (pat.getCreatingEntanglement() != null && !pat.getCreatingEntanglement().isEmpty()) {
                     List<String> entStrings = new ArrayList<>();
                     for (Map<Integer, String> entItem : pat.getCreatingEntanglement()) {
@@ -123,10 +120,13 @@ public class Neo4jController {
                 } else {
                     patternsSubmap.put("entanglement", new ArrayList<>());
                 }
-
+                if (pat.getKnittingSubcircuits() != null && !pat.getKnittingSubcircuits().isEmpty()) {
+                    patternsSubmap.put("knittingSubcircuits", pat.getKnittingSubcircuits());
+                } else {
+                    patternsSubmap.put("knittingSubcircuits", new ArrayList<>());
+                }
                 item.put("patterns", patternsSubmap);
             }
-
             result.add(item);
         }
         return result;
