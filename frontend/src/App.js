@@ -11,7 +11,7 @@ function App() {
         {/* Home screen: upload and send files to the correct endpoint */}
         <Route path="/" element={<Home />} />
         
-        {/* Result screen: calls /api/analyze/download (does the analysis + returns Excel) */}
+        {/* Result screen: calls /api/analyze/download (does the analysis + returns zip) */}
         <Route path="/result" element={<Result />} />
       </Routes>
     </Router>

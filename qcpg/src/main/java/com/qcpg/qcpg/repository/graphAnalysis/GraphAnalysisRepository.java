@@ -4,6 +4,7 @@ import com.qcpg.qcpg.dto.EntanglementPatternDTO;
 import com.qcpg.qcpg.dto.graphAnalysis.ExecEdgeDTO;
 import com.qcpg.qcpg.dto.graphAnalysis.ExecEdgeDTOEx;
 import com.qcpg.qcpg.dto.graphAnalysis.OpNodeDTO;
+import com.qcpg.qcpg.dto.graphAnalysis.PDGEdgeDTO;
 import com.qcpg.qcpg.dto.graphAnalysis.QubitNodeDTO;
 import com.qcpg.qcpg.model.graphAnalysis.GenericNode;
 import com.qcpg.qcpg.service.graphAnalysis.OperationProjection;
@@ -20,6 +21,13 @@ public interface GraphAnalysisRepository extends Neo4jRepository<GenericNode, Lo
 
   @Query("OPTIONAL MATCH (n) RETURN DISTINCT n.file")
   List<String> getDistinctFiles();
+
+  @Query("""
+      MATCH (a)-[r:PDG_DATA|PDG_CONTROL]->(b)
+      WHERE a.file = $file AND b.file = $file
+      RETURN id(a) AS sourceId, id(b) AS targetId, type(r) AS relType
+      """)
+  List<PDGEdgeDTO> getPDGEdges(@Param("file") String file);
 
   @Query("OPTIONAL MATCH (qb:QUANTUM_BIT) WHERE qb.file = $file RETURN count(DISTINCT qb)")
   Long getWidth(String file);

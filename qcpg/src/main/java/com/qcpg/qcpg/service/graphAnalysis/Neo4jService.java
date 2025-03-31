@@ -253,7 +253,8 @@ public class Neo4jService {
 
     private List<String> detectKnittingSubcircuits(String file) {
         List<OperationProjection> opsRaw = nodeRepository.getOperationsForKnitting(file);
-
+        List<PDGEdgeDTO> pdgEdges = nodeRepository.getPDGEdges(file);
+    
         Map<Long, OpData> opMap = new HashMap<>();
         for (OperationProjection op : opsRaw) {
             Long opId = op.getOpId();
@@ -261,12 +262,11 @@ public class Neo4jService {
             Set<Long> qbSet = (qbList != null) ? new HashSet<>(qbList) : new HashSet<>();
             opMap.put(opId, new OpData(opId, qbSet));
         }
-
-        Map<Long, Set<Long>> qubitConnectivityGraph = new HashMap<>();
+    
+        Map<Long, Set<Long>> connectivityGraph = new HashMap<>();
         for (Long opId : opMap.keySet()) {
-            qubitConnectivityGraph.put(opId, new HashSet<>());
+            connectivityGraph.put(opId, new HashSet<>());
         }
-
         List<Long> opIds = new ArrayList<>(opMap.keySet());
         for (int i = 0; i < opIds.size(); i++) {
             for (int j = i + 1; j < opIds.size(); j++) {
@@ -277,27 +277,35 @@ public class Neo4jService {
                 Set<Long> inter = new HashSet<>(qa);
                 inter.retainAll(qb);
                 if (!inter.isEmpty()) {
-                    qubitConnectivityGraph.get(aId).add(bId);
-                    qubitConnectivityGraph.get(bId).add(aId);
+                    connectivityGraph.get(aId).add(bId);
+                    connectivityGraph.get(bId).add(aId);
                 }
             }
         }
-
+        
+        for (PDGEdgeDTO edge : pdgEdges) {
+            Long src = edge.getSourceId();
+            Long tgt = edge.getTargetId();
+            if (opMap.containsKey(src) && opMap.containsKey(tgt)) {
+                connectivityGraph.get(src).add(tgt);
+                connectivityGraph.get(tgt).add(src);
+            }
+        }
+    
         Set<Long> visited = new HashSet<>();
         List<Set<Long>> components = new ArrayList<>();
-        for (Long opId : qubitConnectivityGraph.keySet()) {
+        for (Long opId : connectivityGraph.keySet()) {
             if (!visited.contains(opId)) {
                 Set<Long> comp = new HashSet<>();
-                dfsComponent(opId, qubitConnectivityGraph, visited, comp);
+                dfsComponent(opId, connectivityGraph, visited, comp);
                 components.add(comp);
             }
         }
-
+    
         Map<Long, OperationProjection> opProjectionMap = new HashMap<>();
         for (OperationProjection op : opsRaw) {
             opProjectionMap.put(op.getOpId(), op);
         }
-
         List<String> subcircuits = new ArrayList<>();
         int compIndex = 0;
         for (Set<Long> comp : components) {
@@ -322,7 +330,6 @@ public class Neo4jService {
             subcircuits.add(rep);
             compIndex++;
         }
-
         return subcircuits;
     }
 
@@ -334,7 +341,7 @@ public class Neo4jService {
                 dfsComponent(neighbor, graph, visited, component);
             }
         }
-    }
+    }    
 
     private Double getPSposQ(String file, String gate) {
         List<QubitNodeDTO> qubits = nodeRepository.getQubitsForFile(file);

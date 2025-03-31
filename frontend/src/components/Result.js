@@ -11,7 +11,7 @@ function Result() {
   useEffect(() => {
     const analyzeAndDownload = async () => {
       try {
-        // Trigger the analysis & get the Excel file
+        // Trigger the analysis
         const response = await axios.get('http://localhost:8080/api/analyze/download', {
           responseType: 'blob',
         });
@@ -44,7 +44,7 @@ function Result() {
       {isLoading && !errorMessage && (
         <div className="spinner-overlay">
           <div className="spinner" />
-          <p>Analyzing your files and generating Excel report...</p>
+          <p>Analyzing your files and generating report...</p>
         </div>
       )}
 
@@ -57,7 +57,7 @@ function Result() {
 
       {/* If the process has finished loading (isLoading = false) AND there's no error, we show success */}
       {!isLoading && !errorMessage && (
-        <p>Your Excel report has been successfully downloaded!</p>
+        <p>Your report has been successfully downloaded!</p>
       )}
     </div>
   );
