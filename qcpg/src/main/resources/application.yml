@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: qcpg
+  servlet:
+    multipart:
+      max-file-size: 5000MB
+      max-request-size: 500000MB
+
+  neo4j:
+    uri: bolt://localhost:7687
+    authentication:
+      username: neo4j
+      password: default1
+
+
+

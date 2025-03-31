@@ -1,0 +1,14 @@
+{
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Spring Boot-QcpgApplication<qcpg>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.qcpg.qcpg.QcpgApplication",
+      "projectName": "qcpg",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
+}
