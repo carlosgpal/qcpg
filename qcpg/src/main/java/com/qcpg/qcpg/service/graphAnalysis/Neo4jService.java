@@ -140,7 +140,10 @@ public class Neo4jService {
 
                 int layerQub = 0;
                 for (Long x : sameQubitMap.get(opId)) {
-                    if (indexInTopo.get(x) < indexInTopo.get(opId)) {
+                    Integer idxX = indexInTopo.get(x);
+                    Integer idxOp = indexInTopo.get(opId);
+
+                    if (idxX != null && idxOp != null && idxX < idxOp) {
                         layerQub = Math.max(layerQub, opMap.get(x).layer);
                     }
                 }
@@ -254,7 +257,7 @@ public class Neo4jService {
     private List<String> detectKnittingSubcircuits(String file) {
         List<OperationProjection> opsRaw = nodeRepository.getOperationsForKnitting(file);
         List<PDGEdgeDTO> pdgEdges = nodeRepository.getPDGEdges(file);
-    
+
         Map<Long, OpData> opMap = new HashMap<>();
         for (OperationProjection op : opsRaw) {
             Long opId = op.getOpId();
@@ -262,7 +265,7 @@ public class Neo4jService {
             Set<Long> qbSet = (qbList != null) ? new HashSet<>(qbList) : new HashSet<>();
             opMap.put(opId, new OpData(opId, qbSet));
         }
-    
+
         Map<Long, Set<Long>> connectivityGraph = new HashMap<>();
         for (Long opId : opMap.keySet()) {
             connectivityGraph.put(opId, new HashSet<>());
@@ -282,7 +285,7 @@ public class Neo4jService {
                 }
             }
         }
-        
+
         for (PDGEdgeDTO edge : pdgEdges) {
             Long src = edge.getSourceId();
             Long tgt = edge.getTargetId();
@@ -291,7 +294,7 @@ public class Neo4jService {
                 connectivityGraph.get(tgt).add(src);
             }
         }
-    
+
         Set<Long> visited = new HashSet<>();
         List<Set<Long>> components = new ArrayList<>();
         for (Long opId : connectivityGraph.keySet()) {
@@ -301,7 +304,7 @@ public class Neo4jService {
                 components.add(comp);
             }
         }
-    
+
         Map<Long, OperationProjection> opProjectionMap = new HashMap<>();
         for (OperationProjection op : opsRaw) {
             opProjectionMap.put(op.getOpId(), op);
@@ -341,7 +344,7 @@ public class Neo4jService {
                 dfsComponent(neighbor, graph, visited, component);
             }
         }
-    }    
+    }
 
     private Double getPSposQ(String file, String gate) {
         List<QubitNodeDTO> qubits = nodeRepository.getQubitsForFile(file);
