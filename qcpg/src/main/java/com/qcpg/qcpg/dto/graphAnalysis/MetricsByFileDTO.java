@@ -16,6 +16,9 @@ import lombok.Setter;
 public class MetricsByFileDTO {
     private String file;
 
+    private Long numQubits;
+    private Long numClassicalBits;
+
     private Long width;
     private Long depth;
 

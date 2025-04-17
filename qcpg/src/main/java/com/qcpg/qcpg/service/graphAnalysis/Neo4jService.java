@@ -167,6 +167,9 @@ public class Neo4jService {
             int maxDens = layers.values().stream().mapToInt(List::size).max().orElse(0);
             double avgDens = layers.values().stream().mapToInt(List::size).average().orElse(0.0);
 
+            dto.setNumQubits(nodeRepository.getNumQubits(f));
+            dto.setNumClassicalBits(nodeRepository.getNumClassicalBits(f));
+
             dto.setMaxDens((long) maxDens);
             dto.setAvgDens(avgDens);
 

@@ -148,6 +148,18 @@ public interface GraphAnalysisRepository extends Neo4jRepository<GenericNode, Lo
   List<QubitNodeDTO> getQubitsForFile(String file);
 
   @Query("""
+      OPTIONAL MATCH (qb:QUANTUM_BIT {file:$file})
+      RETURN count(DISTINCT qb) AS numQubits
+      """)
+  Long getNumQubits(@Param("file") String file);
+
+  @Query("""
+      OPTIONAL MATCH (cb:CLASSICAL_BIT {file:$file})
+      RETURN count(DISTINCT cb) AS numClassicalBits
+      """)
+  Long getNumClassicalBits(@Param("file") String file);
+
+  @Query("""
       OPTIONAL MATCH (op)
       WHERE (op:QUANTUM_GATE OR op:QUANTUM_MEASURE OR op:QUANTUM_RESET)
         AND op.file=$file
