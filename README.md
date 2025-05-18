@@ -46,3 +46,5 @@ Execute the following command in the folder [docker](./docker/):
   ```shell
   npm start
   ```
+
+### 4. Reports
