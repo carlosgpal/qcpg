@@ -173,6 +173,12 @@ public class Neo4jService {
             dto.setMaxDens((long) maxDens);
             dto.setAvgDens(avgDens);
 
+            if (f.startsWith("qiskit_")) {
+                dto.setOrigin("qiskit");
+            } else {
+                dto.setOrigin("qasm");
+            }
+
             dto.setNoPx(nodeRepository.getNoPx(f));
             dto.setNoPy(nodeRepository.getNoPy(f));
             dto.setNoPz(nodeRepository.getNoPz(f));
@@ -237,6 +243,13 @@ public class Neo4jService {
             } else if (isz) {
                 spGate = "z";
             }
+
+            if (f.startsWith("qiskit_")) {
+                dto.setOrigin("qiskit");
+            } else {
+                dto.setOrigin("qasm");
+            }
+
             Map<Boolean, String> stPrepResult = Map.of(isx || isy || isz, spGate);
             dto.setStatePreparation(stPrepResult);
 

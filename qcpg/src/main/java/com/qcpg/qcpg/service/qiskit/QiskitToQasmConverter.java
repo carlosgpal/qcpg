@@ -39,8 +39,7 @@ public class QiskitToQasmConverter {
         ProcessBuilder pb = new ProcessBuilder(
                 PYTHON_INTERPRETER,
                 scriptFile.getAbsolutePath(),
-                tempPy.getAbsolutePath()
-        );
+                tempPy.getAbsolutePath());
         pb.redirectErrorStream(true);
         Process process = pb.start();
 
@@ -111,7 +110,7 @@ public class QiskitToQasmConverter {
                     ? "unknown"
                     : originalName.replaceAll("[^a-zA-Z0-9-_\\.]", "_");
 
-            String qasmFileName = safeName + "_circuit" + index + ".qasm";
+            String qasmFileName = "qiskit_" + safeName + "_circuit" + index + ".qasm";
             byte[] qasmBytes = qasmContent.getBytes();
 
             // Create and return a MockMultipartFile.
@@ -119,8 +118,7 @@ public class QiskitToQasmConverter {
                     "files",
                     qasmFileName,
                     "application/x-qasm", // QASM file content type.
-                    qasmBytes
-            );
+                    qasmBytes);
         } catch (Exception e) {
             throw new RuntimeException("Error creating MockMultipartFile for QASM", e);
         }

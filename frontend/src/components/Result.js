@@ -1,41 +1,53 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+"use client"
+
+import { useEffect, useState } from "react"
+import axios from "axios"
+import { useNavigate } from "react-router-dom"
 
 function Result() {
+  const navigate = useNavigate()
   // Are we still waiting for the server to complete analysis + send the file?
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true)
 
   // If there's an error during the download, we store it here
-  const [errorMessage, setErrorMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState("")
 
   useEffect(() => {
     const analyzeAndDownload = async () => {
       try {
         // Trigger the analysis
-        const response = await axios.get('http://localhost:8080/api/analyze/download', {
-          responseType: 'blob',
-        });
+        const response = await axios.get("http://localhost:8080/api/analyze/download", {
+          responseType: "blob",
+        })
 
         // Force download
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'analysis_results.zip');
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+        const url = window.URL.createObjectURL(new Blob([response.data]))
+        const link = document.createElement("a")
+        link.href = url
+        link.setAttribute("download", "analysis_results.zip")
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
 
         // Done with loading
-        setIsLoading(false);
+        setIsLoading(false)
       } catch (error) {
-        console.error('Error during analysis/download:', error);
-        setIsLoading(false);
-        setErrorMessage('An error occurred while analyzing/downloading the file. Please try again.');
+        console.error("Error during analysis/download:", error)
+        setIsLoading(false)
+        setErrorMessage("An error occurred while analyzing/downloading the file. Please try again.")
       }
-    };
+    }
 
-    analyzeAndDownload();
-  }, []);
+    analyzeAndDownload()
+  }, [])
+
+  const handleGoToCombiner = () => {
+    navigate("/combiner")
+  }
+
+  const handleGoToHome = () => {
+    navigate("/")
+  }
 
   return (
     <div className="result-container">
@@ -56,11 +68,18 @@ function Result() {
       )}
 
       {/* If the process has finished loading (isLoading = false) AND there's no error, we show success */}
-      {!isLoading && !errorMessage && (
-        <p>Your report has been successfully downloaded!</p>
-      )}
+      {!isLoading && !errorMessage && <p>Your report has been successfully downloaded!</p>}
+
+      <div className="buttons-container">
+        <button onClick={handleGoToHome} className="button-clear">
+          Back to Analysis
+        </button>
+        <button onClick={handleGoToCombiner} className="button-import">
+          Go to Combiner
+        </button>
+      </div>
     </div>
-  );
+  )
 }
 
-export default Result;
+export default Result

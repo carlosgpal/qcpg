@@ -10,9 +10,11 @@ def split_data(data_list):
     patterns_list = []
     for item in data_list:
         metric_item = {k: v for k, v in item.items() if k != "patterns"}
+        metric_item["origin"] = item.get("origin", "unknown") 
         metrics_list.append(metric_item)
         pattern_item = {
             "file": item.get("file", ""),
+            "origin": item.get("origin", "unknown"),
             "statePrep": item.get("patterns", {}).get("statePrep", "None"),
             "uniform": item.get("patterns", {}).get("uniform", ""),
             "creatingEntanglement": item.get("patterns", {}).get("entanglement", []),
@@ -36,7 +38,7 @@ def write_csv_file_metrics(filename, metrics_list):
             writer.writerow([item.get(key, "") for key in keys])
 
 def write_csv_file_patterns(filename, patterns_list):
-    header = ["file", "statePrep", "uniform", "creatingEntanglement", "knittingSubcircuits"]
+    header = ["file", "origin", "statePrep", "uniform", "creatingEntanglement", "knittingSubcircuits"]
     with open(filename, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL)
         writer.writerow(header)
@@ -45,6 +47,7 @@ def write_csv_file_patterns(filename, patterns_list):
             knit = " | ".join(str(x) for x in item.get("knittingSubcircuits", []))
             writer.writerow([
                 item.get("file", ""),
+                item.get("origin", "unknown"),
                 item.get("statePrep", "None"),
                 item.get("uniform", ""),
                 ent,

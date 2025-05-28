@@ -19,6 +19,8 @@ public class MetricsByFileDTO {
     private Long numQubits;
     private Long numClassicalBits;
 
+    private String origin;
+
     private Long width;
     private Long depth;
 

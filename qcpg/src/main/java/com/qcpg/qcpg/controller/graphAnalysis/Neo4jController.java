@@ -70,6 +70,7 @@ public class Neo4jController {
         for (MetricsByFileDTO m : allMetrics) {
             Map<String, Object> item = new HashMap<>();
             item.put("file", m.getFile());
+            item.put("origin", m.getOrigin());
             item.put("numQubits", m.getNumQubits());
             item.put("numClassicalBits", m.getNumClassicalBits());
             item.put("width", m.getWidth());

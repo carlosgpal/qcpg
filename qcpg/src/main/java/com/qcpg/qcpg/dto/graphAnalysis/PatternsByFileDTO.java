@@ -19,6 +19,8 @@ import lombok.Setter;
 public class PatternsByFileDTO {
     private String file;
 
+    private String origin;
+
     Map<Boolean, String> statePreparation;
     private boolean uniformSuperposition;
     List<Map<Integer, String>> creatingEntanglement;
